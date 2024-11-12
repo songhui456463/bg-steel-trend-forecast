@@ -1,2 +1,2 @@
-# bg-steel-price-trend-forecast_new
-价格预测场景代码
+# bg-steel-trend-forecast
+价格&需求预测场景代码
