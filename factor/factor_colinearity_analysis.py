@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import statsmodels.api as sm
 
 from utils.log import mylog
+from factor.factor_config import FactorConfig
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", None)
@@ -19,11 +20,16 @@ pd.set_option("display.width", None)
 # todo 如果将低频的价格序列降采样到月频，那预测结果就只有月频的； 只能升采样了？
 
 
-def factor_colinearity_filter(xs_df: pd.DataFrame) -> pd.DataFrame:
+def factor_colinearity_filter(
+    xs_df: pd.DataFrame,
+    n_clusters: int = 1,
+    vif_thred: int = 10,
+    vif_max_cycle: int = 10,  # 循环迭代求vif的最大迭代次数
+) -> pd.DataFrame:
     """
     检验所有协从因子的共线性，筛选出有代表性的因子
     :param xs_df: 没有date索引的多列协从因子，各列协从因子的频度一致，由于提前期不同，所以没有对齐dateindex(没有行索引)
-    :return:
+    :return: 没有日期索引的keyfactors多列df
     """
     from sklearn.preprocessing import StandardScaler
     from scipy.cluster.hierarchy import linkage, fcluster
@@ -37,14 +43,16 @@ def factor_colinearity_filter(xs_df: pd.DataFrame) -> pd.DataFrame:
         index=xs_df.index,
     )  # z-score，kmeans对量纲敏感
     corr_mat = xs_df_scaled.corr()  # df
-    # mylog.info(f"corr_mat:\n{corr_mat}")
+    # mylog.info(f"allfactors_corr_mat:\n{corr_mat}")
     dist_mat = 1 - corr_mat
 
     # 2 聚类分组  todo 选择合适的聚类方法 以及 clu数量 很重要
     # clusters = KMeans(n_clusters=3, n_init='auto').fit_predict()  # kmeans不能用距离矩阵作输入
     # labels = fcluster(linkage(dist_mat,method='ward'), t=1, criterion=)
     clu_labels = SpectralClustering(
-        n_clusters=1, affinity="precomputed", assign_labels="discretize"
+        n_clusters=n_clusters,
+        affinity="precomputed",
+        assign_labels="discretize",
     ).fit_predict(
         dist_mat
     )  # 这个
@@ -58,7 +66,8 @@ def factor_colinearity_filter(xs_df: pd.DataFrame) -> pd.DataFrame:
     # mylog.info(f'vif_res_df:\n{vif_res_df}')
 
     # 2 计算各因子的vif，并 3 排除共线性高的因子
-    vif_thred = 10  # 5, 3
+    # vif_thred = 10  # 5, 3
+    # vif_thred = 10
     for clu in set(vif_res_df["clu"].values):
         # mylog.info(f'\n============== clu={clu} ===============\n')
         # 取出每一簇的xs_df
@@ -70,13 +79,13 @@ def factor_colinearity_filter(xs_df: pd.DataFrame) -> pd.DataFrame:
         # mylog.info(f'cur_clu_xs_df:\n{cur_clu_xs_df}')
 
         # 计算各因子的vif 并筛选因子
-        # 法一：简单排除
+        """法一：简单排除"""
         # cur_clu_xs_num = cur_clu_xs_df.shape[1]
         # for col_i in range(cur_clu_xs_num):
         #     vif = variance_inflation_factor(cur_clu_xs_df.values, col_i)
         #     vif_res_df.loc[vif_res_df['factor_name'] == cur_clu_factor[col_i], 'clu_vif'] = vif
         # vif_res_df.loc[vif_res_df['clu_vif'] <= vif_thred, 'reserved'] = True
-        # 法二：迭代排除
+        """法二：迭代排除"""
         cur_clu_xs_df_copy = copy.deepcopy(cur_clu_xs_df)
         condition_clu = vif_res_df["clu"] == clu
         cycle_i = 1
@@ -116,7 +125,7 @@ def factor_colinearity_filter(xs_df: pd.DataFrame) -> pd.DataFrame:
             if (
                 len(reserved_factor)
                 == 1  # 不需要再对只有一个因子的xs_df_copy求vif
-                or cycle_i >= 21
+                or cycle_i >= vif_max_cycle
             ):  # 设置迭代求vif的最大迭代次数
                 vif_res_df.loc[
                     vif_res_df["factor_name"].isin(reserved_factor.tolist()),

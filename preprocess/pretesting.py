@@ -10,13 +10,13 @@
 """
 
 import copy
-from typing import Tuple
 import pandas as pd
 from scipy import stats
-from enum import Enum
+from statsmodels.stats.diagnostic import het_arch, het_breuschpagan
 
 from utils.log import mylog
-from statsmodels.stats.diagnostic import het_arch, het_breuschpagan
+from preprocess.pre_enums import EnumPretestingReturn
+from utils.enum_family import EnumForecastMethod
 
 
 def autocorr_test(df: pd.DataFrame):
@@ -201,31 +201,13 @@ def hetero_test(df):
 #     pass  # todo
 
 
-class ForecastMethod(Enum):
-    # 无需预测
-    GUASSIAN_FIT = 1
-    T_FIT = 2
-    GARCH = 3
-    # 需要预测
-    ARIMA = 4
-    SARIMA = 5
-    VAR = 6
-    ECM = 7
-
-    HOLT_WINTERS = 8
-    FB_PROPHET = 9
-    LSTM = 10
-    TRANSFORMER = 11
-    # ....
-
-
 def run_pretesting(df: pd.DataFrame):
     """
     对缺失异常处理后的单变量df进行检验，判断进行那种预测方法
     :param df:
     :return:
     """
-    forecast_method = []  # 2-d
+    forecastmethod_list = []
     # 1 检验自相关性
     is_autocorr = autocorr_test(df)
     if not is_autocorr:
@@ -233,41 +215,33 @@ def run_pretesting(df: pd.DataFrame):
         is_het = hetero_test(df)
         # 若序列的方差值是常数，则检测是否为正态分布，否则用t分布拟合
         if not is_het:
-            is_normal = gaussian_test(df)["is_guassian"]
+            is_normal = gaussian_test(df).get(
+                EnumPretestingReturn.gaussianTest_is_gaussian.value
+            )
             if is_normal:
-                forecast_method.append([ForecastMethod.GUASSIAN_FIT])
+                forecastmethod_list.append(EnumForecastMethod.NORMAL_FIT)
             else:
-                forecast_method.append([ForecastMethod.T_FIT])
+                forecastmethod_list.append(EnumForecastMethod.T_FIT)
         else:
-            forecast_method.append([ForecastMethod.GARCH])
+            forecastmethod_list.append(EnumForecastMethod.GARCH_FIT)
     else:
         # 2.2 若原始序列存在自相关性
         # is_stationary, stationary_d = stationary_test(df)
         res_stationary = stationary_test(df)
-        if res_stationary.get("is_stationary"):
+        if res_stationary.get(
+            EnumPretestingReturn.stationaryTest_is_stationary.value
+        ):
             # 直接对平稳序列进行预测
-            forecast_method.extend(
+            forecastmethod_list.extend(
                 [
-                    [ForecastMethod.ARIMA, res_stationary.get("stationary_d")],
-                    [ForecastMethod.VAR],
-                    # ...
+                    EnumForecastMethod.ARIMA,  # 需要平稳行条件，但预测方法模块会再进行平稳化
+                    EnumForecastMethod.HOLTWINTERS,  # 不要求序列平稳
+                    EnumForecastMethod.FBPROPHET,  # 需要平稳行条件，但...
+                    EnumForecastMethod.LSTM_SINGLE,  # 需要平稳行条件，但...
+                    EnumForecastMethod.VAR,  # 需要平稳行条件，但...
                 ]
             )
-        else:
-            # 直接对非平稳序列进行预测
-            forecast_method.extend(
-                [
-                    [ForecastMethod.HOLT_WINTERS],
-                    [ForecastMethod.FB_PROPHET],
-                    # ...
-                ]
-            )
-            # 对差分处理后的平稳序列进行预测
-            forecast_method.append(
-                [ForecastMethod.ARIMA, res_stationary.get("stationary_d")]
-            )
-
-    return forecast_method
+    return forecastmethod_list
 
 
 if __name__ == "__main__":

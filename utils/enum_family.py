@@ -20,12 +20,6 @@ class EnumSource(Enum):
 
 
 class EnumFreq(Enum):
-    # DAY = 1
-    # WEEK = 2
-    # MONTH = 3
-    # SEASON = 4
-    # HALFYEAR = 5
-    # YEAR = 6
     DAY = "DAY"
     WEEK = "WEEK"
     MONTH = "MONTH"
@@ -34,13 +28,40 @@ class EnumFreq(Enum):
     YEAR = "YEAR"
 
 
+class EnumForecastMethodType(Enum):
+    SINGLE = "single"
+    MULTI = "multi"
+    SIMPLE_FIT = "simple_fit"  # 简单拟合数据序列
+
+
 class EnumForecastMethod(Enum):
-    # 单因子预测
-    ARIMA = "arima"
-    HOLTWINTERS = "holtwinters"  # holtwinters
-    FBPROPHET = "fbprophet"  # fbprophet
-    LSTM_SINGLE = "lstm_single"  # 使用单因子预测价格序列
-    # 多因子
-    LSTM_MULTIPLE = "lstm_multiple"  # 使用多因子预测价格序列
-    VAR = "var"
+    """单因子预测"""
+
+    ARIMA = ("arima", EnumForecastMethodType.SINGLE)
+    HOLTWINTERS = ("holtwinters", EnumForecastMethodType.SINGLE)  # holtwinters
+    FBPROPHET = ("fbprophet", EnumForecastMethodType.SINGLE)  # fbprophet
+    LSTM_SINGLE = (
+        "lstm_single",
+        EnumForecastMethodType.SINGLE,
+    )  # 使用单因子预测价格序列
+
+    """多因子"""
+    LSTM_MULTIPLE = (
+        "lstm_multiple",
+        EnumForecastMethodType.MULTI,
+    )  # 使用多因子预测价格序列
+    VAR = ("var", EnumForecastMethodType.MULTI)
     # todo 其他模型
+
+    """简单拟合"""
+    NORMAL_FIT = ("normalfit", EnumForecastMethodType.SIMPLE_FIT)
+    T_FIT = ("t_fit", EnumForecastMethodType.SIMPLE_FIT)
+    GARCH_FIT = ("garchfit", EnumForecastMethodType.SIMPLE_FIT)
+
+    def __init__(self, value, type):
+        self._value_ = value
+        self.type = type
+
+
+if __name__ == "__main__":
+    list = [EnumForecastMethod.ARIMA, EnumForecastMethod.VAR]

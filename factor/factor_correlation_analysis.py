@@ -51,12 +51,15 @@ def max_abs_cov(price_df, factor_df, t, T, n):
 
         t_index = price_df.index.get_loc(t)
         if t_index < n:
+            mylog.error(
+                f"The value of n ({n}) is too large for the current index of t ({t})."
+            )
             raise ValueError(
                 f"The value of n ({n}) is too large for the current index of t ({t})."
             )
 
     except Exception as e:
-        print(f"Parameter validation error: {e}")
+        mylog.error(f"Parameter validation error: {e}")
         return -1, -1
 
     # 获取价格和因子在指定日期范围的数据
@@ -72,6 +75,9 @@ def max_abs_cov(price_df, factor_df, t, T, n):
 
         # 检查因子数据长度是否与价格数据匹配
         if len(factor_r) == len(price_s):
+            # 去掉行索引，否则corr方法内部会自动对齐行索引
+            price_s = price_s.reset_index(drop=True)
+            factor_r = factor_r.reset_index(drop=True)
             cov_value = price_s.corr(factor_r)  # 计算相关系数
             abs_cov_value = abs(cov_value)  # 取绝对值
 
@@ -98,7 +104,7 @@ def calculate_max_abs_cov_for_factors(price_df, factor_dfs, t, T, n=6):
     results = []
 
     for factor_name in factor_dfs.columns:
-        factor_df = factor_dfs[factor_name]
+        factor_df = factor_dfs[[factor_name]]
         max_cov, lag = max_abs_cov(price_df, factor_df, t, T, n)
 
         if max_cov != -1:
@@ -134,7 +140,9 @@ def factor_cal_correlation(y_df: pd.DataFrame, x_df: pd.DataFrame) -> dict:
     x_name = x_df.columns[0]
     # 0 计算两个序列的相关系数
     combined_df = pd.concat([y_df, x_df], axis=1, ignore_index=True)
-    corr_mat = combined_df.corr(method='pearson')  # 相关系数矩阵 'pearson', 'kendall', 'spearman'
+    corr_mat = combined_df.corr(
+        method="pearson"
+    )  # 相关系数矩阵 'pearson', 'kendall', 'spearman'
     corr = round(corr_mat.loc[0, 1], 4)
 
     # 1 建立简单回归（有截距项）
@@ -151,7 +159,9 @@ def factor_cal_correlation(y_df: pd.DataFrame, x_df: pd.DataFrame) -> dict:
         "y_name": y_name,
         "x_name": x_name,
         "corr": corr,  # 相关系数
-        "beta": [np.round(model_intercept.params.values, decimals=6)],  # 一元线性回归的拟合参数
+        "beta": [
+            np.round(model_intercept.params.values, decimals=6)
+        ],  # 一元线性回归的拟合参数
         "t_statis": t_statis,  # 一元线性回归的t检验统计量
         "p_value": p_value,  # 一元线性回归的t检验p值
         "is_significant_corr": is_significant_corr,  # 一元线性回归的t检验 相关性是否显著
@@ -196,14 +206,18 @@ def factor_correlation_filter(y_df: pd.DataFrame, xs_df: pd.DataFrame):
         # mylog.info(f'allfactor_corr_res:\n{allfactor_corr_res}')
 
     # 3 # 所有因子相关性显著分析信息，并按相关强度的绝对值降序排序
-    allfactor_corr_res['corr_abs'] = allfactor_corr_res['corr'].abs()
+    allfactor_corr_res["corr_abs"] = allfactor_corr_res["corr"].abs()
     allfactor_corr_res.sort_values(
-        by=["corr_abs", "p_value"], ascending=[False, True], inplace=True)
-    allfactor_corr_res.drop(columns=['corr_abs'], inplace=True)
+        by=["corr_abs", "p_value"], ascending=[False, True], inplace=True
+    )
+    allfactor_corr_res.drop(columns=["corr_abs"], inplace=True)
+    allfactor_corr_res.reset_index(drop=True, inplace=True)
     # mylog.info(f"allfactor_corr_res:\n{allfactor_corr_res}")
 
     # 4 对corr_res，按照相关性是否显著进行筛选，--> 显著corr_factor们的序列
-    filted_xs_name = allfactor_corr_res.loc[allfactor_corr_res["is_significant_corr"], "x_name"].values
+    filted_xs_name = allfactor_corr_res.loc[
+        allfactor_corr_res["is_significant_corr"], "x_name"
+    ].values
     filted_xs_df = xs_df[filted_xs_name]  # 相关性显著的因子的序列
     # mylog.info(f"<{y_df.columns[0]}> 相关性显著的因子：\n {filted_xs_df}")
 

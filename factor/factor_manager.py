@@ -2,74 +2,105 @@
 多因子分析模块总run
 """
 
+import copy
 import numpy as np
 import pandas as pd
+from enum import Enum
 
-from factor_correlation_analysis import (
+from utils.date_utils import generate_date_pairs
+from utils.log import mylog
+from utils.enum_family import EnumFreq
+from factor.factor_config import FactorConfig
+from factor.factor_resampling import check_freq, auto_resampling
+from factor.factor_correlation_analysis import (
     calculate_max_abs_cov_for_factors,
     factor_correlation_filter,
 )
-from factor_resampling import check_freq, auto_resampling
-from utils.date_utils import generate_date_pairs
-from utils.enum_family import EnumFreq
-from utils.log import mylog
+from factor.factor_colinearity_analysis import factor_colinearity_filter
+from utils.data_read import read_x_by_map
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", None)
 
 
 def multifactor_align_index(
-        y_df: pd.DataFrame, xs_df: pd.DataFrame
+    y_df: pd.DataFrame,
+    candi_xs_name_list: list,
 ):
     """
     将所有协从因子与价格序列的日期对齐，并将所有对齐的协从因子放到一个大xs_df
     :param y_df: 价格序列，其频度是想要预测的freq
-    :return:
+    :param candi_xs_name_list:
+    :param analyse_y_startdate:
+    :param analyse_y_enddate:
+    # :param max_lt_check: 提前期分析中的检查的最大提前期期数
+    :return: 所有因子日期对齐的xs_df
     """
-    # 1 todo 获取每个原始频度的协从因子序列: x_df
     price_freq = check_freq(y_df)
 
-    # 2 逐条因子与价格序列对齐
+    # 依次对每个因子重采样，使与价格序列对齐
     resampling_xs_df = pd.DataFrame(index=y_df.index)
-    # for x_name in rawfreq_xs_name_list:
-    for x_name in xs_df.columns:
-        x_df = xs_df[[x_name]].dropna()
-        resampling_x_df = auto_resampling(y_df, x_df)
-        resampling_xs_df[x_df.columns[0]] = resampling_x_df
+
+    for x_name in candi_xs_name_list:
+        # 1 读取该因子
+        unresampling_x_df = read_x_by_map(
+            factor_name=x_name, start_date=None, end_date=None
+        )
+        try:
+            # 2 重采样
+            # 检查x_df的长度是否足够（比如y_df为2014-01-01至2024-01-01，但x_df只有2022-01-01以后的数据，则抛弃该因子）
+            if y_df.index[0] < unresampling_x_df.index[0]:
+                mylog.warning(
+                    f"<{unresampling_x_df.columns[0]}> 该因子的历史数据不足，无法用于对当前标的序列做相关性分析: "
+                    f'y_df:{y_df.index[0].strftime("%Y-%m-%d")}--{y_df.index[-1].strftime("%Y-%m-%d")}, '
+                    f'x_df:{unresampling_x_df.index[0].strftime("%Y-%m-%d")}--{unresampling_x_df.index[-1].strftime("%Y-%m-%d")}'
+                )
+                raise ValueError
+            # 重采样
+            resampling_x_df = auto_resampling(
+                base_df=y_df, todo_df=unresampling_x_df
+            )
+            mylog.info(
+                f"<{resampling_x_df.columns[0]}> resampling_x_df:\n{resampling_x_df}"
+            )
+
+            # 3 拼接到xs_df
+            resampling_xs_df = pd.merge(
+                left=resampling_xs_df,
+                right=resampling_x_df,
+                how="left",
+                left_index=True,
+                right_index=True,
+            )
+        except Exception as e:
+            mylog.warning(f"<{unresampling_x_df.columns[0]}> 该因子重采样失败")
 
     mylog.info(f"resampling_xs_df:\n{resampling_xs_df}")
     return resampling_xs_df
 
 
 def multifactor_ayalysis(
-        y_df: pd.DataFrame,
-        xs_df: pd.DataFrame,
-        y_start: str,
-        y_end: str,
-        freq: EnumFreq,
+    y_df: pd.DataFrame,
+    xs_df: pd.DataFrame,
+    y_start: str,
+    y_end: str,
+    freq: EnumFreq,
 ):
     """
     分析众多协从因子与标的因子的相关性和共线性，筛选出相关性高的且共线性低的协从因子
-    :param y_df: 单列标的因子，index为dateindex,如'热轧汇总价格日频'
+    :param y_df: 单列标的因子，index为dateindex,如'热轧汇总价格日频'.y_start和y_end需要存在于y_df当中
     :param xs_df: 要分析的多列协从因子，频度相同且已对齐dateindex，如均升采样为日频（频度与标的序列一致）
     :param y_start: 对价格序列分析的开始时间
     :param y_end: 对价格序列分析的结束时间
     :param freq: 价格序列的freq，（所有因子与价格序列的freq应该是一致的）
     :return: 可以直接input到多因子预测模型的 filted_xs_df
     """
-    # 参数n: 最多检查多长滞后期的提前期相关性 todo
-    if freq == EnumFreq.DAY:
-        n = 120  # 接近半年
-    elif freq == EnumFreq.WEEK:
-        n = 24  # 半年
-    elif freq == EnumFreq.MONTH:
-        n = 6  # 半年
-    else:
-        n = 10
+    # 参数n: 最多检查多长滞后期的提前期相关性
+    max_lt_check = FactorConfig.MAX_LT_CHECK.get(freq, 6)
 
     # 1 每个协从因子的相关提前期分析
     bestleadtime_result_df = calculate_max_abs_cov_for_factors(
-        y_df, xs_df, t=y_start, T=y_end, n=n
+        y_df, xs_df, t=y_start, T=y_end, n=max_lt_check
     )
     bestleadtime_result_df = bestleadtime_result_df[
         ["factor_name", "max_abs_cov", "best_lag"]
@@ -89,12 +120,12 @@ def multifactor_ayalysis(
         temp_idx = end_idx - col_best_lag + 1
         if temp_idx >= len(xs_df.index):
             lead_xs_df[col] = xs_df.iloc[
-                              (start_idx - col_best_lag):, [col_i]
-                              ].reset_index(drop=True)
+                (start_idx - col_best_lag) :, [col_i]
+            ].reset_index(drop=True)
         else:
             lead_xs_df[col] = xs_df.iloc[
-                              (start_idx - col_best_lag): temp_idx, [col_i]
-                              ].reset_index(drop=True)
+                (start_idx - col_best_lag) : temp_idx, [col_i]
+            ].reset_index(drop=True)
     # mylog.info(f'lead_xs_df:\n{lead_xs_df}')
 
     # 2.2 检验相关性是否显著，筛选出显著的因子
@@ -102,6 +133,7 @@ def multifactor_ayalysis(
     all_factor_corr_res, corr_filted_xs_df = factor_correlation_filter(
         y_df=sub_y_df, xs_df=lead_xs_df
     )  # all_factor_corr_res中按corr列.abs降序
+    # mylog.info(f'all_factor_corr_res:\n{all_factor_corr_res}')
 
     # 2.3 所有因子显著相关分析结果 拼接 提前期信息
     allfactor_lt_corr_res = pd.merge(
@@ -110,27 +142,35 @@ def multifactor_ayalysis(
         how="outer",
         left_on=["x_name"],
         right_index=True,
+    ).sort_values(by=["p_value"])
+    mylog.info(
+        f"所有因子提前期及相关性显著分析结果 all_factor_lt_corr_res:\n{allfactor_lt_corr_res}"
     )
-    # mylog.info(
-    #     f"所有因子提前期及相关性显著分析结果 all_factor_lt_corr_res:\n{allfactor_lt_corr_res}"
-    # )
+
     # poc 场景4展示
     poc_factor_list_display_df = poc_factor_res_output(allfactor_lt_corr_res)
-    mylog.info(f"poc:场景4结果输出：\n{poc_factor_list_display_df}")
+    # mylog.info(f"poc:场景4结果输出：\n{poc_factor_list_display_df}")
 
     # 3 共线性分析，筛选出代表性因子
-    # colinear_filted_xs_df = factor_colinearity_filter(corr_filted_xs_df)
-    colinear_filted_xs_df = None
-
-    # key_factor_df = pd.DataFrame(columns=['factor_name', 'max_abs_cov', 'best_lag'])
-    # keyfactor_bestleadtime_result_df = bestleadtime_result_df.loc[
-    #     colinear_filted_xs_df.columns.values.tolist()
-    # ]
-    keyfactor_bestleadtime_result_df = None
+    colinear_filted_xs_df = factor_colinearity_filter(
+        xs_df=corr_filted_xs_df,
+        n_clusters=FactorConfig.N_CLUSTERS,
+        vif_thred=FactorConfig.VIF_THRED,
+        vif_max_cycle=FactorConfig.VIF_MAX_CYCLE,
+    )
+    # colinear_filted_xs_df = None
+    keyfactor_bestleadtime_result_df = bestleadtime_result_df.loc[
+        colinear_filted_xs_df.columns.values.tolist()
+    ]
     # mylog.info(f'keyfactor_bestleadtime_result_df:\n{keyfactor_bestleadtime_result_df}')
 
     # colinear_filted_xs_df可以直接参与到多因子预测模型中
-    return poc_factor_list_display_df, keyfactor_bestleadtime_result_df, colinear_filted_xs_df
+    # return poc_factor_list_display_df, keyfactor_bestleadtime_result_df, colinear_filted_xs_df
+    return (
+        poc_factor_list_display_df,
+        allfactor_lt_corr_res,
+        colinear_filted_xs_df,
+    )
 
 
 def poc_factor_res_output(allfactor_lt_corr_res_df: pd.DataFrame):
@@ -145,17 +185,22 @@ def poc_factor_res_output(allfactor_lt_corr_res_df: pd.DataFrame):
     )
     # 读取提前期和相关性结果
     display_df = allfactor_lt_corr_res_df.loc[
-                 :,
-                 [
-                     "y_name",
-                     "x_name",
-                     "best_lag",
-                     "corr",
-                     # 'p_value'
-                 ],
-                 ]
+        :,
+        [
+            # Enum_allfactor_lt_corr_res_DF.y_name.value,
+            # Enum_allfactor_lt_corr_res_DF.x_name.value,
+            # Enum_allfactor_lt_corr_res_DF.best_lag.value,
+            # Enum_allfactor_lt_corr_res_DF.corr.value,
+            # Enum_allfactor_lt_corr_res_DF.p_value.value,
+            "y_name",
+            "x_name",
+            "best_lag",
+            "corr",
+            # 'p_value'
+        ],
+    ]
     # 按照相关性强度进行排序
-    display_df = display_df.sort_values(by='corr', ascending=False)
+    display_df = display_df.sort_values(by="corr", ascending=False)
     display_df = pd.merge(
         display_df,
         factor_category_df,
@@ -203,7 +248,9 @@ def poc_multi_cycle_validation():
     frequency = "month"
     periods = 10
     interval = 16
-    multi_cycle_date = generate_date_pairs(start_date, frequency, periods, interval)
+    multi_cycle_date = generate_date_pairs(
+        start_date, frequency, periods, interval
+    )
     print(multi_cycle_date)
     previous_factors_tmp = None
 
@@ -222,25 +269,35 @@ def poc_multi_cycle_validation():
             y_end=y_end_date,
             freq=check_freq(y_df),
         )
-        factors_tmp = result.iloc[:10, ]
-        mylog.info(f"本期[{y_start_date}~{y_end_date}] Top10因子:\n{factors_tmp}")
+        factors_tmp = result.iloc[:10,]
+        mylog.info(
+            f"本期[{y_start_date}~{y_end_date}] Top10因子:\n{factors_tmp}"
+        )
+        mylog.info(f"上一期 Top10因子:\n{previous_factors_tmp}")
         if previous_factors_tmp is None:
             previous_factors_tmp = factors_tmp
         else:
             # 找出交集（重叠的因子名称）
-            common_factors = set(factors_tmp['因子名称']).intersection(set(previous_factors_tmp['因子名称']))
+            common_factors = set(factors_tmp["因子名称"]).intersection(
+                set(previous_factors_tmp["因子名称"])
+            )
             # 计算重叠百分比
-            overlap_percentage = (len(common_factors) / len(factors_tmp['因子名称'])) * 100
+            overlap_percentage = (
+                len(common_factors) / len(factors_tmp["因子名称"])
+            ) * 100
             acc.append(overlap_percentage)
             previous_factors_tmp = factors_tmp
+            print(f"[{y_start_date}~{y_end_date}], {overlap_percentage}")
     mylog.info(f"因子周期: {multi_cycle_date}")
     mylog.info(f"因子重叠度: {[f'{x:.3f}%' for x in acc]}")
     matched = [x for x in acc if x >= 70]
-    mylog.info(f"最终指标: \n"
-               f"指标1：{np.mean(acc):.3f}%, 指标2:{len(matched)/len(acc)*100:.3f}%\n"
-               f"指标说明:\n"
-               f"\t指标1: 每次重叠因子个数除以上一期因子个数, 最终求算术平均值\n"
-               f"\t指标2: 每次重叠度>=70%则为成功一次")
+    mylog.info(
+        f"最终指标: \n"
+        f"指标1：{np.mean(acc):.3f}%, 指标2:{len(matched)/len(acc)*100:.3f}%\n"
+        f"指标说明:\n"
+        f"\t指标1: 每次重叠因子个数除以上一期因子个数, 最终求算术平均值\n"
+        f"\t指标2: 每次重叠度>=70%则为成功一次"
+    )
 
 
 if __name__ == "__main__":
@@ -284,5 +341,6 @@ if __name__ == "__main__":
     #     y_end=y2_end_date,
     #     freq=check_freq(y_df),
     # )
+    # result_tuple2[0].to_csv(r'../outputs/poc4_result_2022-02-01--2024-04-01.csv', encoding='UTF-8-SIG')
 
     poc_multi_cycle_validation()

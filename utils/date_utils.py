@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 
 def generate_date_pairs(
-        start_date_str: str, frequency: str, periods: int, interval: int
+    start_date_str: str, frequency: str, periods: int, interval: int
 ) -> list[tuple]:
     """
     根据输入的开始日期生成对应的日期序列组合
@@ -94,7 +94,7 @@ def generate_date_pairs(
     return date_pairs
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     start_date = "2021-01-01"
     frequency = "month"  # 'month', 'week', 'day', 'year'
     periods = 3
