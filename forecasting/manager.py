@@ -4,19 +4,22 @@
 
 import copy
 from typing import Optional, Dict
+
 import pandas as pd
 
-from utils.log import mylog
-from utils.enum_family import EnumFreq, EnumForecastMethod
-from utils.data_read import read_x_by_map
 from factor.factor_config import FACTORCONFIG, FactorConfig
-from factor.factor_resampling import check_freq, auto_resampling
-from factor.factor_manager import multifactor_align_index, multifactor_ayalysis
 from factor.factor_enums import Enum_allfactor_lt_corr_res_DF
-from preprocess.pretesting import run_pretesting
+from factor.factor_manager import multifactor_align_index, multifactor_ayalysis
+from factor.factor_resampling import check_freq
 from forecasting.forecast_config import FORECASTCONFIG, ForecastConfig
 from forecasting.forecast_manager import roll_forecast
-from forecasting.assessment import forecast_res_plot, forecast_evaluation
+from forecasting.results_assessment import (
+    forecast_res_plot,
+    forecast_evaluation,
+)
+from utils.data_read import read_x_by_map
+from utils.enum_family import EnumFreq, EnumForecastMethod
+from utils.log import mylog
 
 
 class OneForecast:
@@ -73,19 +76,28 @@ def run(
     ForecastConfig: FORECASTCONFIG,
     FactorConfig: FACTORCONFIG,
 ):
-    """因子读取"""
+    """
+    总运行
+    :param ForecastConfig: 预测模块(forecasting)参数
+    :param FactorConfig: 银子分析模块(factor)参数
+    :return:
+    """
+
+    """创建预测对象"""
     f = OneForecast()
     f.y_name = ForecastConfig.TARGET_NAME
     f.candi_xs_name = ForecastConfig.CANDI_FACTORS_NAME
+
     """0-1 读取价格序列"""
     origin_y_df = read_x_by_map(factor_name=ForecastConfig.TARGET_NAME)
-    mylog.info(f"origin_y_df: \n{origin_y_df}")
+    # mylog.info(f'origin_y_df: \n{origin_y_df}')
 
     # 对输入端的参数进行规范（周频用周五，月频用月第一天）
     f.y_freq = check_freq(origin_y_df)
     ForecastConfig.harmonize_param_date(y_freq=f.y_freq)
     ForecastConfig.check_param_date_existence(origin_y_df=origin_y_df)
-    #
+
+    # 截取三节 标的序列。
     analyse_y_startdate_idx = origin_y_df.index.get_loc(
         ForecastConfig.ANALYSE_Y_STARTDATE
     )
@@ -107,6 +119,7 @@ def run(
         + 1
         + (ForecastConfig.ROLL_STEPS + ForecastConfig.PRE_STEPS - 1)
     ]
+
     # 参与多因子分析的标的序列
     f.y_df = pd.concat([f.y_lt_spare_df, f.y_train_df, f.y_test_df], axis=0)
     # 参与预测过程的标的序列
@@ -126,12 +139,13 @@ def run(
         y_end=ForecastConfig.ANALYSE_Y_ENDDATE,
         freq=check_freq(f.y_df),
     )
-    # mylog.info(f'keyfactors_df:\n{keyfactors_df}')
+    mylog.info(f"keyfactors_df.columns:\n{keyfactors_df.columns}")
 
     """2 合并预测所需的历史数据：合并价格列和keyfactors列"""
     if not keyfactors_df.empty:
         # 从resampling_xs_df中按各因子的提前期重新取序列(长度与y_df一致)，拼接成价格和各关键因子的all_history_df
         f.all_history_df = copy.deepcopy(f.y_history_df)
+
         for factor in keyfactors_df.columns:
             # 当前因子的最好提前期
             best_lt = allfactors_lt_corr_df.loc[
@@ -141,6 +155,7 @@ def run(
                 == factor,
                 Enum_allfactor_lt_corr_res_DF.best_lag.value,
             ].iloc[0]
+
             # 当前因子序列的开始date的idx
             temp_idx = (
                 resampling_xs_df.index.get_loc(
@@ -148,6 +163,7 @@ def run(
                 )
                 - best_lt
             )
+
             # 取出当前因子滞后best_lt的序列，长度和y_df一致，合并到all_history_df中
             f.all_history_df.loc[:, factor] = (
                 resampling_xs_df[factor]
@@ -164,8 +180,6 @@ def run(
     f.forecastmethod_list = [
         EnumForecastMethod.ARIMA,
         EnumForecastMethod.HOLTWINTERS,
-        # EnumForecastMethod.FBPROPHET,
-        # EnumForecastMethod.LSTM_SINGLE,
         # EnumForecastMethod.VAR  # 注意：若数据量不够，不能var建模
     ]
 
@@ -177,6 +191,7 @@ def run(
             forecastmethod_list=f.forecastmethod_list,
             roll_steps=ForecastConfig.ROLL_STEPS,
             pre_steps=ForecastConfig.PRE_STEPS,
+            is_save=True,
         )
     )
     # mylog.info(f'================= 所有方法预测完成的结果 method_realpredf_dict:')
@@ -185,10 +200,22 @@ def run(
     #     pass
 
     # 3.3 T+1期预测值绘图和评估
-    forecast_res_plot(f.weighted_realpreT1df, f.optimal_ws_dict)
+    mylog.info(
+        f"\n"
+        f"============================================== 预测结果评估 =============================================="
+    )
+    # 绘图
+    forecast_res_plot(
+        f.weighted_realpreT1df,
+        f.optimal_ws_dict,
+        is_save=True,
+        is_show=True,
+    )
+    # 评价指标
     f.mae_dict, f.mse_dict, f.mape_dict, f.mape_unfold_df = (
         forecast_evaluation(
             f.weighted_realpreT1df,
+            is_save=True,
         )
     )
     mylog.info(f"mae_dict:\n{f.mae_dict}")

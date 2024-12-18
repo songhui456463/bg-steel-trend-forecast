@@ -1,11 +1,10 @@
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from utils.log import mylog
-from check_outlier import check_outliers
-from preconfig import PreConfig
+import numpy as np
+import pandas as pd
+
+from pre_enums import EnumRepairOutliersMethod
 from preprocess.preconfig import preconfig
-from pre_enums import EnumRepairOutliersMethod, EnumProcessedDF
+from utils.log import mylog
 
 pd.set_option("display.float_format", "{:,.4f}".format)  # 右对齐浮点数
 

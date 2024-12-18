@@ -4,13 +4,11 @@
     2、筛选出与标的序列的相关性显著的因子
 """
 
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 import statsmodels.api as sm
 
 from utils.log import mylog
-
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", None)
@@ -138,6 +136,7 @@ def factor_cal_correlation(y_df: pd.DataFrame, x_df: pd.DataFrame) -> dict:
     """
     y_name = y_df.columns[0]
     x_name = x_df.columns[0]
+
     # 0 计算两个序列的相关系数
     combined_df = pd.concat([y_df, x_df], axis=1, ignore_index=True)
     corr_mat = combined_df.corr(
@@ -166,7 +165,7 @@ def factor_cal_correlation(y_df: pd.DataFrame, x_df: pd.DataFrame) -> dict:
         "p_value": p_value,  # 一元线性回归的t检验p值
         "is_significant_corr": is_significant_corr,  # 一元线性回归的t检验 相关性是否显著
     }
-    # 3 检验模型的有效性  todo
+    # 3 检验模型的有效性
     from preprocess.pretesting import autocorr_test
 
     is_resid_corr = autocorr_test(pd.DataFrame(model_intercept.resid)).get(
@@ -186,15 +185,14 @@ def factor_correlation_filter(y_df: pd.DataFrame, xs_df: pd.DataFrame):
     :param xs_df: 不对齐的多列因子（没有行index，因为每一列的提前期不同，导致行index不能对齐）（xs_df中的列的频度一致）
     :return:
     """
-    # 1 取序列y_df  # 是否要取？还是直接传进来序列
-
-    # 2 循环计算各胁从因子与标的因子的相关性是否显著
+    # 1 循环计算各胁从因子与标的因子的相关性是否显著
     allfactor_corr_res = (
         pd.DataFrame()
     )  # columns=['y_name', 'x_name', 'corr', 'beta', 't_statis', 'p_value', 'is_significant_corr'
     for x_name in xs_df.columns:
         mylog.info(f"======= 检验协从因子相关显著性：{x_name}")
-        # 取胁从因子x_df
+
+        # 取协从因子x_df
         x_df = xs_df[[x_name]]
         # 计算corr并t检验
         cur_res_dict = factor_cal_correlation(y_df, x_df)
@@ -205,7 +203,7 @@ def factor_correlation_filter(y_df: pd.DataFrame, xs_df: pd.DataFrame):
         )
         # mylog.info(f'allfactor_corr_res:\n{allfactor_corr_res}')
 
-    # 3 # 所有因子相关性显著分析信息，并按相关强度的绝对值降序排序
+    # 2 所有因子相关性显著分析信息，并按相关强度的绝对值降序排序
     allfactor_corr_res["corr_abs"] = allfactor_corr_res["corr"].abs()
     allfactor_corr_res.sort_values(
         by=["corr_abs", "p_value"], ascending=[False, True], inplace=True
@@ -214,7 +212,7 @@ def factor_correlation_filter(y_df: pd.DataFrame, xs_df: pd.DataFrame):
     allfactor_corr_res.reset_index(drop=True, inplace=True)
     # mylog.info(f"allfactor_corr_res:\n{allfactor_corr_res}")
 
-    # 4 对corr_res，按照相关性是否显著进行筛选，--> 显著corr_factor们的序列
+    # 3 对corr_res，按照相关性是否显著进行筛选，--> 显著corr_factor们的序列
     filted_xs_name = allfactor_corr_res.loc[
         allfactor_corr_res["is_significant_corr"], "x_name"
     ].values
@@ -234,7 +232,7 @@ if __name__ == "__main__":
     # print(y_df)
     # print(xs_df)
 
-    # todo 哐哐测试
+    # 哐哐测试
     # 检查的最大提前期设置为6个月
     #
     # result_df = calculate_max_abs_cov_for_factors(

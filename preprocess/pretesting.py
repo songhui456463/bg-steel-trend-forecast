@@ -10,13 +10,14 @@
 """
 
 import copy
+
 import pandas as pd
 from scipy import stats
-from statsmodels.stats.diagnostic import het_arch, het_breuschpagan
+from statsmodels.stats.diagnostic import het_arch
 
-from utils.log import mylog
 from preprocess.pre_enums import EnumPretestingReturn
 from utils.enum_family import EnumForecastMethod
+from utils.log import mylog
 
 
 def autocorr_test(df: pd.DataFrame):
@@ -40,7 +41,6 @@ def autocorr_test(df: pd.DataFrame):
         is_corr = True  # 存在自相关性
         # 不能直接通过pvalue或统计量值来找出自相关性最强的滞后阶数（统计量值是累积的，自然会随滞后阶数的增加而增加，因为它考虑了多个滞后期的自相关性。）
         # best_corrlag = res_df['lb_pvalue'].idxmin()  # 不管用
-        # todo 自相关滞后阶数，定阶
         best_corrlag = None
 
     # mylog.info(f'AutoCorr-Test Result:\n'
@@ -146,6 +146,8 @@ def stationary_test(df):
             stationary_d = d
             break
         copy_df = copy_df.diff(1).dropna()
+    # 注意：如果到这里stationary_d仍为None，说明该序列差分3次都没有平稳，可能是“累计”型序列，次年首月和当年最后一月的差分值相对于其他差分值是异常的。
+    # 即使再多差分几次也平稳不了。
 
     # mylog.info(
     #     f"Stationary-Test Result:\n"
@@ -155,6 +157,7 @@ def stationary_test(df):
     #     f"stationary_d: {stationary_d}\n"
     #     f"=========================================================="
     # )
+
     res_dict = {"is_stationary": is_stationary, "stationary_d": stationary_d}
     # return is_stationary, stationary_d
     return res_dict
@@ -190,15 +193,6 @@ def hetero_test(df):
     )
     res_dict = {"is_het": is_het}
     return res_dict
-
-
-# def season_test(df):
-#     """
-#     检验序列中是否含有季节成分，若含有，可以用SARIMA\ETS等模型
-#     :param df:
-#     :return:
-#     """
-#     pass  # todo
 
 
 def run_pretesting(df: pd.DataFrame):

@@ -3,16 +3,14 @@
 """
 
 import copy
-import pandas as pd
+
 import matplotlib.pyplot as plt
-from enum import Enum, IntEnum
-from itertools import groupby
-from typing import Optional
+import pandas as pd
 
 from check_missing import check_missing
+from pre_enums import EnumRepairMissingMethod
 from preconfig import PreConfig
 from utils.log import mylog
-from pre_enums import EnumRepairMissingMethod
 
 # pd.set_option('display.precision', 4)  # 设置浮点数精度
 pd.set_option("display.float_format", "{:,.4f}".format)  # 右对齐浮点数
@@ -24,7 +22,6 @@ def is_repairable_missing(
     check_end: str,
     preconfig: PreConfig,
 ) -> bool:
-    # todo input改为check_missing模块的最终结果
     """
     检查序列的缺失值信息，根据缺失值信息判断是否可以修补
     :param origin_df:
@@ -32,6 +29,7 @@ def is_repairable_missing(
     :param check_end:
     :return:
     """
+    # input改为check_missing模块的最终结果
     numerical_df, miss_results = check_missing(
         origin_df, check_start, check_end, preconfig
     )

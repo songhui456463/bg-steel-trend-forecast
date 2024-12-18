@@ -2,13 +2,23 @@
 总config
 """
 
+import datetime
 import os
 from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    BASE_PATH: str = str(Path(__file__).absolute().parent.parent)
+    BASE_PATH: str = str(
+        Path(__file__).absolute().parent.parent
+    )  # project path
+    # 创建每次运行的输出目录
+    _OUTPUT_DIR_PATH_INITIALIZED: bool = False  # 标志变量。
+    _OUTPUT_DIR_PATH: str = os.path.join(
+        os.path.join(BASE_PATH, "outputs"),
+        f"RunResults{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+    )
 
     # 日志相关
     LOG_DIR_NAME: str = "logs"  # 日志文件夹名
@@ -29,8 +39,18 @@ class Settings(BaseSettings):
     # 3 predict params
     # 4 evaluation params
 
+    @property
+    def OUTPUT_DIR_PATH(self):
+        # 第一次访问OUTPUT_DIR_PATH时，创建输出目录
+        if not self._OUTPUT_DIR_PATH_INITIALIZED:
+            os.makedirs(self._OUTPUT_DIR_PATH, exist_ok=True)
+            # 更新标志变量
+            self._OUTPUT_DIR_PATH_INITIALIZED = True
+        return self._OUTPUT_DIR_PATH
+
 
 settings = Settings()
 if __name__ == "__main__":
     print(settings.BASE_PATH)
+    # print(settings.OUTPUT_DIR_PATH)
     pass

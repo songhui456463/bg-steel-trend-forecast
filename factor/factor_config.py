@@ -3,11 +3,12 @@
 """
 
 from typing import Dict
+
 from utils.enum_family import EnumFreq
 
 
-class FACTORCONFIG:  # todo 参数调整
-    """提前期相关性分析"""
+class FACTORCONFIG:
+    """因子分析参数调整"""
 
     MAX_LT_CHECK: Dict[EnumFreq, int] = {
         EnumFreq.DAY: 6,  # 频度为day时，要分析的最大提前期数

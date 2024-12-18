@@ -4,9 +4,9 @@
 
 import numpy as np
 import pandas as pd
-import traceback
 from gurobipy import Model, quicksum, GRB
 from scipy.optimize import minimize
+
 from utils.log import mylog
 
 
@@ -22,6 +22,7 @@ def weight_optimization(real_pre_df: pd.DataFrame):
     """gurobi优化"""
     model = Model("Weight_Optimization")
     w = model.addVars(premodels_num, name="weight", lb=0, ub=1)  # 变量
+
     # 损失函数和约束
     mse_obj = quicksum(
         (
@@ -52,6 +53,7 @@ def weight_optimization(real_pre_df: pd.DataFrame):
         optimal_ws_dict = {}
 
     mylog.info(f"optimal_ws_dict: \n{optimal_ws_dict}")
+    # mylog.info(f"optimal_ws_dict: \n{optimal_ws_dict}")
     return optimal_ws_dict
 
 
@@ -63,8 +65,6 @@ def weight_optimization_cvxpy(real_pre_df: pd.DataFrame):
     """
     premodels = real_pre_df.columns[1:].tolist()
     premodels_num = len(premodels)
-
-    # todo
 
     # # 求解
     # model.optimize()
@@ -119,10 +119,10 @@ def weight_optimization_scipy(real_pre_df: pd.DataFrame):
     if result.success:
         optimal_ws_dict = dict(zip(premodels, result.x))
     else:
-        print("< pre_weight > 优化失败")
+        mylog.warning("< pre_weight > 优化失败")
         optimal_ws_dict = {}
 
-    print(f"optimal_ws_dict: \n{optimal_ws_dict}")
+    # mylog.info(f"optimal_ws_dict: \n{optimal_ws_dict}")
     return optimal_ws_dict
 
 
@@ -137,5 +137,6 @@ def weight_forcast(pre_df: pd.DataFrame, optimal_ws_dict: dict):
         pre_df["weighted_pre"] = sum(
             pre_df[premodel] * w for premodel, w in optimal_ws_dict.items()
         )
-    mylog.info(f"weighted_pre_df:\n{pre_df}")
+
+    # mylog.info(f"weighted_pre_df:\n{pre_df}")
     return pre_df

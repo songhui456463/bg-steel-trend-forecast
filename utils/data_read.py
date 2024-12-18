@@ -2,20 +2,19 @@
 读取本地excel中的因子数据
 """
 
-import sys
-import traceback
-from typing import Union, Optional
-import numpy as np
-import pandas as pd
 import copy
 import os
+import sys
+import traceback
 import warnings
+from typing import Union
 
-from utils.log import mylog
+import pandas as pd
+
 from factor.factor_resampling import check_freq
-from utils.enum_family import EnumFreq
 from forecasting.local_data_map import factor_location_map
-
+from utils.enum_family import EnumFreq
+from utils.log import mylog
 
 # 全局忽略 UserWarning
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -131,7 +130,7 @@ def get_factor_path_from_folder(folder_path):
                 )  # 注意：只能用下表索引 iloc
                 col_df = col_df.loc[col_df.iloc[:, 0].notna()].dropna(
                     how="any"
-                )
+                )  # 去除该银子的空值（主要是针对首尾空值）
 
                 map_dict[factor_name] = {
                     "path": file_path,
@@ -190,6 +189,8 @@ def read_x_from_local(
         ]
     # 设置datetime列为行索引
     x_df.set_index(keys=[x_df.columns[0]], drop=True, inplace=True)
+    # 按日期升序排序
+    x_df.sort_index(inplace=True, ascending=True)
 
     # 4若输入date参数，则根据date参数取序列
     if start_date is not None:
@@ -215,6 +216,7 @@ def read_x_from_local(
         f"first_date:{x_df.index[0].strftime('%Y-%m-%d')},last_date:{x_df.index[-1].strftime('%Y-%m-%d')},"
         f"len={x_df.shape[0]}"
     )
+
     return x_df
 
 
@@ -232,7 +234,7 @@ def read_x_by_map(
     cur_factor_location_dict = factor_location_map.get(factor_name, None)
     if cur_factor_location_dict is not None:
         file_path = cur_factor_location_dict.get("path", None)
-        if sys.platform != "win":
+        if sys.platform != "win32":
             file_path = file_path.replace("\\", "/")
         col_idx = cur_factor_location_dict.get("col_idx", None)
         # 从本地读取数据
@@ -269,4 +271,5 @@ if __name__ == "__main__":
 
     # factor_name = '国际热轧板卷汇总价格：中国市场（日）'
     # factor_name = '销量:液压挖掘机:主要企业:出口(外销):当月值'
+    # factor_name = '国际热轧板卷汇总价格：中国市场（周）'
     # x_df = read_x_by_map(factor_name)

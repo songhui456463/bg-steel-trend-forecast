@@ -3,25 +3,25 @@
 比如，“热轧475汇总价格”
 """
 
-from typing import Optional, Union
-import pandas as pd
-import numpy as np
 import copy
+from typing import Optional, Union
+
+import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
 
-from utils.log import mylog
-from preconfig import preconfig
 from check_missing import check_missing
-from repair_missing import is_repairable_missing, repair_missing
 from check_outlier import check_outliers
-from repair_outlier import repair_outliers
 from pre_enums import EnumProcessedDF, EnumRepairOutliersMethod
+from preconfig import preconfig
 from pretesting import (
     autocorr_test,
     gaussian_test,
     stationary_test,
     hetero_test,
 )
+from repair_missing import repair_missing
+from repair_outlier import repair_outliers
+from utils.log import mylog
 
 
 class Target:
@@ -40,8 +40,8 @@ class Target:
         # origin
         self.origin_df = origin_df
         self.name = name  # '热轧475汇总价格'
-        self.source = source  # ‘mysteel’ todo 这些永久信息如何获取
-        self.freq = freq  # 'Day','Week','Month','Season','HalfYear','Year'
+        self.source = source  # ['local', 'db']
+        self.freq = freq  # ['Day','Week','Month','Season','HalfYear','Year']
         self.expected_dtype = expected_dtype  # 值类型是int or float
         # process
         self.start_date = start  # '%Y-%m-%d',包含

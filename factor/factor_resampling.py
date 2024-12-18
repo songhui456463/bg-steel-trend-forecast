@@ -8,16 +8,14 @@
 
 """
 
-import copy
-import pandas as pd
+from typing import Optional
+
 import numpy as np
-from typing import Union, Optional
+import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
 
-from utils.log import mylog
 from utils.enum_family import EnumFreq
-from preprocess.pre_enums import EnumRepairMissingMethod
-
+from utils.log import mylog
 
 # 设置显示的最大行数
 pd.set_option("display.max_rows", 200)  # 设置为 10 行
@@ -222,7 +220,7 @@ def upsampling_by_dateindex(
     #     base_highfreq_df.index, [lowfreq_name]
     # ]
 
-    mylog.info(f"upsampling_lowfreq_df: \n{upsampling_lowfreq_df}")
+    # mylog.info(f'upsampling_lowfreq_df: \n{upsampling_lowfreq_df}')
     return upsampling_lowfreq_df
 
 
@@ -233,9 +231,6 @@ def auto_resampling(base_df, todo_df):
     :param todo_df: 单列df,需要与base_df的频度对其（dateindex需要一致）
     :return: todo_df按base_df重采样后的、按base_df.index的序列
     """
-    # 比如因子相关性分析，需要日频价格序列降采样
-    # 比如多因子输入到预测模型，需要价格序列协从因子升采样
-
     # 检查两个序列的频度
     base_freq = check_freq(base_df)
     todo_freq = check_freq(todo_df)
@@ -257,13 +252,17 @@ def auto_resampling(base_df, todo_df):
                 highfreq_df=todo_df, base_lowfreq_df=base_df
             )
         else:
-            new_todo_df = todo_df
+            # 频度相同。但存在标的dateindex和因子dateindex不能对齐的情况，因此仍然重采样
+            new_todo_df = upsampling_by_dateindex(
+                base_highfreq_df=base_df, lowfreq_df=todo_df
+            )  # 部分因子存在固定月份数据缺失的情况，因此升采样
+            # new_todo_df = todo_df
     else:
         mylog.warning(
-            f"price_df<{base_df.columns[0]}>, factor_df<{todo_df.columns[0]}> : 重采样对齐失败, 跳过当前factor"
+            f"price_df<{base_df.columns[0]}>, factor_df<{todo_df.columns[0]}> : 重采样对齐失败, 忽略当前factor"
         )
         raise Exception(
-            f"price_df<{base_df.columns[0]}>, factor_df<{todo_df.columns[0]}> : 重采样对齐失败, 跳过当前factor"
+            f"price_df<{base_df.columns[0]}>, factor_df<{todo_df.columns[0]}> : 重采样对齐失败, 忽略当前factor"
         )
 
     return new_todo_df

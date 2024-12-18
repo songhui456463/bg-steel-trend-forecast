@@ -3,46 +3,41 @@
 """
 
 import copy
-import traceback
 import os
+from typing import List
+
 import numpy as np
 import pandas as pd
-from typing import List
 from pandas.api.types import is_datetime64_any_dtype
-import torch
 
-from utils.log import mylog
-from utils.enum_family import (
-    EnumForecastMethod,
-    EnumForecastMethodType,
-    EnumFreq,
-)
-
-# from config.config import EnumEnv
+from config.config import settings
 from factor.factor_resampling import check_freq
 from forecast_config import ForecastConfig
-from modeling_arima import arima_model
-from modeling_holtwinters import (
-    holtwinters_model_by_gridsearch,
-    holtwinters_model_apply,
-)
-from modeling_weight import (
-    weight_optimization,
-    weight_optimization_scipy,
-    weight_forcast,
-)
-from modeling_var import var_forcast
 from forecasting.simplefit import (
     gaussian_modeling,
     gaussian_forecasting,
     t_dist_modeling,
     t_dist_forecasting,
-    arch_modeling,
     arch_forecasting,
     GarchInput,
 )
-from assessment import forecast_res_plot, forecast_evaluation
-
+from modeling_arima import arima_model
+from modeling_holtwinters import (
+    holtwinters_model_by_cv,
+)
+from modeling_var import var_forcast
+from modeling_weight import (
+    weight_optimization,
+    weight_optimization_scipy,
+    weight_forcast,
+)
+from results_assessment import forecast_res_plot
+from utils.enum_family import (
+    EnumForecastMethod,
+    EnumForecastMethodType,
+    EnumFreq,
+)
+from utils.log import mylog
 
 # 设置显示的最大行数
 pd.set_option("display.max_rows", 60)  # 设置为 10 行
@@ -87,44 +82,6 @@ def single_factor_forecast(
             continue
         if method == EnumForecastMethod.ARIMA:
             preroll_history_df = copy.deepcopy(history_df)
-
-            """法一：基于追加预测值，滚动预测pre_steps"""
-            # for pre_i in range(pre_steps):
-            #     pre_value = preroll_history_df.iloc[-1, 0]  # 防止预测失败，没有新值可以追加
-            #     try:
-            #         # 1 拟合模型
-            #         if pre_i % ForecastConfig.MODEL_UPDATE_FREQ.get(method) == 0:
-            #             # 每pre几次更新一次模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数更新")
-            #             arima_model_res = arima_model(preroll_history_df)  # arima 建模
-            #             new_model_res = arima_model_res
-            #             mylog.info(f"<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}")
-            #         else:
-            #             # 本次pre不更新模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数不更新")
-            #             temp_preroll_history_df = copy.deepcopy(preroll_history_df).reset_index(drop=True)
-            #             new_model_res = arima_model_res.apply(temp_preroll_history_df, refit=False)  # refit=False: 不需要重新拟合模型参数
-            #             mylog.info(f"<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}")
-            #         # 2 预测一步
-            #         # mylog.info(f'------<pre_i:{pre_i}> <{method.value}> 预测一步')
-            #         forecast_res = new_model_res.forecast(steps=1)  # pd.series
-            #         pre_value = forecast_res.iloc[0]
-            #         # 存放预测结果
-            #         cur_pre_col_idx = real_pre_df.columns.get_loc(f"{method.value}_pre")
-            #         real_pre_df.iloc[pre_i, cur_pre_col_idx] = pre_value
-            #         mylog.info(f"<pre_i:{pre_i}> <{method.value}>预测一步 real_pre_df：\n{real_pre_df}")
-            #     except Exception as e:
-            #         mylog.warning(f"<pre_i:{pre_i}> <method:{method.value}> 预测失败")
-            #
-            #     # 3 更新历史数据
-            #     # 追加预测值
-            #     pre_value_df = pd.DataFrame({f"{preroll_history_df.columns[0]}": pre_value}, index=[real_pre_df.index[pre_i]])
-            #     # pre_value_df = pd.DataFrame({f'{preroll_history_df.columns[0]}': pre_value}, index=[len(preroll_history_df + 1)])
-            #     preroll_history_df = pd.concat([preroll_history_df, pre_value_df], axis=0)
-            #     # mylog.info(f'****preroll_history_df:\n{preroll_history_df}')
-            # pres_list = real_pre_df[f"{method.value}_pre"].tolist()
-
-            """法二：一次性预测pre_steps"""  # （预测出pre_steps期的值）
             arima_model_res = arima_model(preroll_history_df)  # arima 建模
             forecast_res = arima_model_res.forecast(
                 steps=pre_steps
@@ -134,46 +91,8 @@ def single_factor_forecast(
 
         elif method == EnumForecastMethod.HOLTWINTERS:
             preroll_history_df = copy.deepcopy(history_df)
-
-            """法一：基于追加预测值，滚动预测pre_steps"""
-            # for pre_i in range(pre_steps):
-            #     pre_value = preroll_history_df.iloc[-1, 0]  # 防止预测失败，没有新值可以追加
-            #     try:
-            #         # 1 拟合模型
-            #         if pre_i % ForecastConfig.MODEL_UPDATE_FREQ.get(method) == 0:
-            #             # 每pre几次更新一次模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数更新")
-            #             hw_order_tuple, hw_model_res = holtwinters_model_by_gridsearch(preroll_history_df)  # hw 建模
-            #             new_model_res = hw_model_res
-            #             # mylog.info(f'<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}')
-            #         else:
-            #             # 本次pre不更新模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数不更新")
-            #             temp_preroll_history_df = copy.deepcopy(preroll_history_df).reset_index(drop=True)
-            #             new_model_res = holtwinters_model_apply(temp_preroll_history_df, hw_order_tuple)
-            #             # mylog.info(f'<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}')
-            #         # 2 预测一步
-            #         # mylog.info(f'------<pre_i:{pre_i}> <{method.value}> 预测一步')
-            #         forecast_res = new_model_res.forecast(steps=1).reset_index(drop=True)  # pd.series
-            #         pre_value = forecast_res.iloc[0]
-            #         # 存放预测结果
-            #         cur_pre_col_idx = real_pre_df.columns.get_loc(f"{method.value}_pre")
-            #         real_pre_df.iloc[pre_i, cur_pre_col_idx] = pre_value
-            #         mylog.info(f"<pre_i:{pre_i}> <{method.value}>预测一步 real_pre_df：\n{real_pre_df}")
-            #     except Exception as e:
-            #         mylog.warning(f"<pre_i:{pre_i}> <method:{method.value}> 预测失败")
-            #
-            #     # 3 更新历史数据
-            #     # 追加预测值
-            #     pre_value_df = pd.DataFrame({f"{preroll_history_df.columns[0]}": pre_value},
-            #                                 index=[real_pre_df.index[pre_i]])
-            #     # pre_value_df = pd.DataFrame({f'{preroll_history_df.columns[0]}': pre_value}, index=[len(preroll_history_df + 1)])
-            #     preroll_history_df = pd.concat([preroll_history_df, pre_value_df], axis=0)
-            #     # mylog.info(f'****preroll_history_df:\n{preroll_history_df}')
-            # pres_list = real_pre_df[f"{method.value}_pre"].tolist()
-
-            """法二：一次性预测pre_steps"""  # （预测出pre_steps期的值）
-            hw_order_tuple, hw_model_res = holtwinters_model_by_gridsearch(
+            # hw_order_tuple, hw_model_res = holtwinters_model_by_gridsearch(preroll_history_df)  # hw 建模
+            hw_order_tuple, hw_model_res = holtwinters_model_by_cv(
                 preroll_history_df
             )  # hw 建模
             forecast_res = hw_model_res.forecast(steps=pre_steps).reset_index(
@@ -181,130 +100,6 @@ def single_factor_forecast(
             )  # pd.series
             pres_list = forecast_res.tolist()
             real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
-
-        elif method == EnumForecastMethod.FBPROPHET:
-            preroll_history_df = copy.deepcopy(history_df)
-
-            """法一：基于追加预测值，滚动预测pre_steps"""
-            # for pre_i in range(pre_steps):
-            #     pre_value = preroll_history_df.iloc[-1, 0]  # 防止预测失败，没有新值可以追加
-            #     try:
-            #         # 1 拟合模型
-            #         if pre_i % ForecastConfig.MODEL_UPDATE_FREQ.get(method) == 0:
-            #             # 每pre几次更新一次模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数更新")
-            #             prophet_model_res = prophet_model(preroll_history_df)  # prophet 建模
-            #             new_model_res = prophet_model_res
-            #             # mylog.info(f'<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}')
-            #         else:
-            #             # 本次pre不更新模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数不更新")
-            #             new_model_res = prophet_model_res
-            #             # mylog.info(f'<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}')
-            #         # 2 预测一步
-            #         mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 预测一步")
-            #         # 创建未来数据框
-            #         future_df = create_future_dataframe(preroll_history_df, 1)
-            #         forecast_res = new_model_res.predict(future_df)
-            #         pre_value = forecast_res.iloc[-1]['yhat']
-            #         # 存放预测结果
-            #         cur_pre_col_idx = real_pre_df.columns.get_loc(f"{method.value}_pre")
-            #         real_pre_df.iloc[pre_i, cur_pre_col_idx] = pre_value
-            #         mylog.info(f"<pre_i:{pre_i}> <{method.value}>预测一步 real_pre_df：\n{real_pre_df}")
-            #     except Exception as e:
-            #         mylog.warning(f"<pre_i:{pre_i}> <method:{method.value}> 预测失败, 错误信息：{traceback.format_exc()}")
-            #
-            #     # 3 更新历史数据
-            #     # 追加预测值
-            #     pre_value_df = pd.DataFrame({f'{preroll_history_df.columns[0]}': pre_value},
-            #                                 index=[real_pre_df.index[pre_i]])
-            #     # pre_value_df = pd.DataFrame({f'{preroll_history_df.columns[0]}': pre_value}, index=[len(preroll_history_df + 1)])
-            #     preroll_history_df = pd.concat([preroll_history_df, pre_value_df], axis=0)
-            #     # mylog.info(f'****preroll_history_df:\n{preroll_history_df}')
-            #     roll_history_df = update_index_with_future_ds(roll_history_df, future_df, pre_value)
-            # pres_list = real_pre_df[f"{method.value}_pre"].tolist()
-
-            """法二：一次性预测pre_steps"""  # （预测出pre_steps期的值）
-            prophet_model_res = prophet_model(
-                preroll_history_df
-            )  # prophet 建模
-            # 创建未来数据框
-            future_df = create_future_dataframe(
-                preroll_history_df, pre_steps
-            )  # 一次预测pre_steps步
-            forecast_res = prophet_model_res.predict(future_df)
-            pres_list = forecast_res["yhat"].tolist()
-            yearly_seasonalty = forecast_res["yearly"].tolist()
-            weekly_seasonalty = forecast_res["weekly"].tolist()
-            real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
-            real_pre_df.loc[:, f"{method.value}_yearly_seasonalty"] = (
-                yearly_seasonalty
-            )
-            real_pre_df.loc[:, f"{method.value}_weekly_seasonalty"] = (
-                weekly_seasonalty
-            )
-
-        elif (
-            method == EnumForecastMethod.LSTM_SINGLE
-        ):  # todo 追加预测值后 下一期的预测值过于平稳
-            preroll_history_df = copy.deepcopy(history_df)
-
-            """法一：基于追加预测值，滚动预测pre_steps"""
-            # for pre_i in range(pre_steps):
-            #     pre_value = preroll_history_df.iloc[-1, 0]  # 防止预测失败，没有新值可以追加
-            #     try:
-            #         # 1 拟合模型
-            #         if pre_i % ForecastConfig.MODEL_UPDATE_FREQ.get(method) == 0:
-            #             # 每pre几次更新一次模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数更新")
-            #             lstm_single_model = lstmsingle.modeling(train_df=preroll_history_df)
-            #             # mylog.info(f'<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}')
-            #         else:
-            #             # 本次pre不更新模型
-            #             mylog.info(f"------<pre_i:{pre_i}> <{method.value}> 模型参数不更新")
-            #             # mylog.info(f'<pre_i:{pre_i}> <{method.value}> new_model_res.params:\n{new_model_res.params}')
-            #         # 2 预测一步
-            #         # mylog.info(f'------<pre_i:{pre_i}> <{method.value}> 预测一步')
-            #         pres_list = lstmsingle.forecast(preroll_history_df, lstm_single_model, pre_steps=1)
-            #         pre_value = pres_list[0]
-            #         # 存放预测结果
-            #         cur_pre_col_idx = real_pre_df.columns.get_loc(f"{method.value}_pre")
-            #         real_pre_df.iloc[pre_i, cur_pre_col_idx] = pre_value
-            #         mylog.info(f"<pre_i:{pre_i}> <{method.value}>预测一步 real_pre_df：\n{real_pre_df}")
-            #     except Exception as e:
-            #         mylog.warning(f"<pre_i:{pre_i}> <method:{method.value}> 预测失败")
-            #
-            #     # 3 更新历史数据
-            #     # 追加预测值
-            #     pre_value_df = pd.DataFrame({f"{preroll_history_df.columns[0]}": pre_value},
-            #                                 index=[real_pre_df.index[pre_i]])
-            #     # pre_value_df = pd.DataFrame({f'{pre_history_df.columns[0]}': pre_value}, index=[len(preroll_history_df + 1)])
-            #     preroll_history_df = pd.concat([preroll_history_df, pre_value_df], axis=0)  # todo
-            #     # mylog.info(f'****preroll_history_df:\n{preroll_history_df}')
-            # pres_list = real_pre_df[f"{method.value}_pre"].tolist()
-
-            """法二：一次性预测pre_steps"""  # （预测出pre_steps期的值）
-            # 模型
-            cur_lstm_model_path = get_lstm_model_path(
-                price_history_df=preroll_history_df, model_class=LSTMSingle
-            )
-            if os.path.exists(cur_lstm_model_path):
-                mylog.info(f"加载历史训练模型：{cur_lstm_model_path}")
-                lstm_single_model = torch.load(
-                    f=cur_lstm_model_path, weights_only=False
-                )  # 显式指定weights_only参数，防止pickle兼容性
-            else:
-                mylog.info(f"训练lstm_single_mdoel，并保存")
-                lstm_single_model = lstmsingle.modeling(
-                    train_df=preroll_history_df
-                )
-                torch.save(obj=lstm_single_model, f=cur_lstm_model_path)
-            # 预测
-            pres_list = lstmsingle.forecast(
-                preroll_history_df, lstm_single_model, pre_steps=pre_steps
-            )  # todo 检查
-            real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
-
         else:
             mylog.warning(f"<method:{method.value}> method取值错误")
         # mylog.info(f'<method:{method.value}> 预测值保存 real_pre_df:\n{real_pre_df}')
@@ -318,6 +113,7 @@ def multi_factor_forecast(
     # real_pre_df: pd.DataFrame,
     forecastmethod_list: List[EnumForecastMethod],
     pre_steps: int = 6,
+    cur_roll_r: int = -1,
 ):
     """
     多因子预测模型的滚动预测
@@ -342,13 +138,14 @@ def multi_factor_forecast(
         if method == EnumForecastMethod.VAR:
             pre_price_df = var_forcast(
                 train_xs_df=train_xs_df,
-                roll_steps=pre_steps,
+                pre_steps=pre_steps,
                 varmodel_update_freq=9999,
+                is_ir_fevd=(cur_roll_r == 0),
             )  # pre_price_df: 没有datetime index的预测值df (单列)
             real_pre_df.loc[:, f"{method.value}_pre"] = pre_price_df.values
             pres_list = pre_price_df.iloc[:, 0].tolist()
 
-        elif method == EnumForecastMethod.LSTM_MULTIPLE:  # todo
+        elif method == EnumForecastMethod.LSTM_MULTIPLE:
             pass
             preprice_df = None
             real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
@@ -426,14 +223,15 @@ def roll_forecast(
     forecastmethod_list: List[EnumForecastMethod],
     roll_steps: int,
     pre_steps: int = 6,
+    is_save: bool = True,
 ):
     """
-
     :param all_history_df: 所有历史序列
     :param pre_start_date: 真正的预测第一天是 pre_start_date及之后的第一个按频度的期
     :param roll_steps: 滚动次数。满足 pre_start_date及之后的期数 >= len(最终的test_df) = roll_steps+pre_steps-1
     :param forecastmethod_list: 预测方法列表
     :param pre_steps: 每次roll中的预测期数
+    :param is_save: 预测结果是否保存本地
     :return:
     """
     # 1 根据pre_start_date和roll_steps来划分出train和test，test_df可能有空值（即没有实际值）
@@ -462,6 +260,7 @@ def roll_forecast(
     # 3 每种method进行roll预测，每个roll预测pre_steps步
     method_realpredf_dict = {}  # {EnumForecastMethod: real_pre_df}
     for method in forecastmethod_list:
+        print(f"\n")
         mylog.info(f"========== method:{method}")
         method_realpredf = copy.deepcopy(
             real_pre_df
@@ -487,15 +286,14 @@ def roll_forecast(
         # 滚动roll_steps次进行预测
         for roll_r in range(roll_steps):
             mylog.info(f"------roll_r: {roll_r}")
+
             # 每次roll的预测开始日期
             rollr_prestartdate = method_realpredf.index[roll_r]
-            # roll_test_df = pd.DataFrame(index=method_realpredf.index[roll_r:roll_r+pre_steps],
-            #                             columns=method_realpredf.columns[0])  # 一个空值的df即可，只需要index日期和len(index)
             roll_test_df = copy.deepcopy(
                 method_realpredf.iloc[roll_r : roll_r + pre_steps, [0]]
             )
             mylog.info(
-                f"<method={method.value}> <roll_r={roll_r}> rollr_prestartdate: {rollr_prestartdate}"
+                f"<method={method.value}> <roll_r={roll_r}>  rollr_prestartdate: {rollr_prestartdate}"
             )
             # mylog.info(f'<method={method.value}> <roll_r={roll_r}> cur roll roll_history_df:\n{roll_history_df}')
             # mylog.info(f'<method={method.value}> <roll_r={roll_r}> cur roll roll_test_df:\n{roll_test_df}')
@@ -514,6 +312,7 @@ def roll_forecast(
                     test_df=roll_test_df,
                     forecastmethod_list=[method],
                     pre_steps=pre_steps,
+                    cur_roll_r=roll_r,
                 )
             elif method.type == EnumForecastMethodType.SIMPLE_FIT:
                 pre_value_df = simplefit_forecast(
@@ -562,22 +361,65 @@ def roll_forecast(
         allmethod_realpreT1df.loc[:, f"{method_value}_pre_T+1"] = (
             method_realpredf.loc[:, ["pre_T+1"]]
         )
-    mylog.info(
-        f"合并所有模型的T+1预测结果：allmethod_realpredf:\n{allmethod_realpreT1df}"
-    )
+    # mylog.info(f'合并所有模型的T+1预测结果：allmethod_realpreT1df:\n{allmethod_realpreT1df}')
 
     # 5.1 使用有real值的期来训练权重
     nona_allmethod_realpre_df = allmethod_realpreT1df.dropna()
-    optimal_ws_dict = weight_optimization(
-        nona_allmethod_realpre_df
-    )  # {'arima_pre_T+1': 1.0}
-    # optimal_ws_dict = weight_optimization_scipy(nona_allmethod_realpre_df)
+    # mylog.info(f'nona_allmethod_realpre_df:\n{nona_allmethod_realpre_df}')
+    # optimal_ws_dict = weight_optimization(nona_allmethod_realpre_df)  # {'arima_pre_T+1': 1.0}
+    optimal_ws_dict = weight_optimization_scipy(nona_allmethod_realpre_df)
+    mylog.info(f"optimal_ws_dict: \n{optimal_ws_dict}")
+
     # 5.2 权重预测
     weighted_realpreT1df = weight_forcast(
         allmethod_realpreT1df, optimal_ws_dict
-    )  # todo 如果有模型预测失败，预测时排除掉预测失败的模型 重新调整权重进行加权
+    )
+    mylog.info(f"weighted_preT1_df:\n{weighted_realpreT1df}")
 
-    # 6 T+1预测值绘图和评估
+    # 6 预测结果保存本地
+    if is_save:
+        # 6.1
+        middle_file_path = os.path.join(
+            settings.OUTPUT_DIR_PATH,
+            "[Total] (rollprocess)method_realpre_df_dict.xlsx",
+        )
+        for method_name, method_realpredf in method_realpredf_dict.items():
+            sheet_name = method_name
+            if not os.path.exists(middle_file_path):
+                with pd.ExcelWriter(
+                    middle_file_path, engine="openpyxl"
+                ) as writer:
+                    method_realpredf.to_excel(
+                        writer, sheet_name=sheet_name, index=True
+                    )
+            else:
+                with pd.ExcelWriter(
+                    middle_file_path, mode="a", engine="openpyxl"
+                ) as writer:
+                    method_realpredf.to_excel(
+                        writer, sheet_name=sheet_name, index=True
+                    )
+        mylog.info(
+            f"[Total] (rollprocess)method_realpre_df_dict.xlsx 已保存本地!"
+        )
+        # 6.2
+        final_file_path = os.path.join(
+            settings.OUTPUT_DIR_PATH,
+            "[Total] (rollfinal)weighted_realpreT1df.xlsx",
+        )
+        with pd.ExcelWriter(final_file_path, engine="openpyxl") as writer:
+            weighted_realpreT1df.to_excel(
+                writer, sheet_name=f"weighted_realpreT1df", index=True
+            )
+        with pd.ExcelWriter(
+            final_file_path, mode="a", engine="openpyxl"
+        ) as writer:
+            pd.DataFrame([optimal_ws_dict]).to_excel(
+                writer, sheet_name="optimal_ws"
+            )
+        mylog.info(f"[Total] (rollfinal)weighted_realpreT1df.xlsx 已保存本地!")
+
+    # 7 T+1预测值绘图和评估
     # forecast_res_plot(weighted_realpreT1df, optimal_ws_dict)
     #
     # mae_dict, mse_dict = forecast_evaluation(weighted_realpreT1df,)
@@ -643,17 +485,11 @@ def run_forecast(
     optimal_ws_dict = weight_optimization(nona_real_pre_df)
     # optimal_ws_dict = weight_optimization_scipy(nona_real_pre_df)
     # 权重预测
-    weighted_real_pre_df = weight_forcast(
-        real_pre_df, optimal_ws_dict
-    )  # todo 如果有模型预测失败，预测时排除掉预测失败的模型 重新调整权重进行加权
+    weighted_real_pre_df = weight_forcast(real_pre_df, optimal_ws_dict)
 
     # 3 结果展示和评估
     forecast_res_plot(weighted_real_pre_df, optimal_ws_dict)
-
-    # 评估预测结果
-
     return None
-    # return weighted_real_pre_df, prod_weighted_real_pre_df
 
 
 def get_train_test_df_by_prestartdate_presteps(
@@ -675,7 +511,7 @@ def get_train_test_df_by_prestartdate_presteps(
         )  # 若为日频预测，取训练长度为三年工作日
     elif freq == EnumFreq.WEEK:
         len_train = ForecastConfig.LEN_TRAIN_WEEK  # 三年工作日
-    elif freq == EnumFreq.MONTH:  # todo 月频容易训练数据量太少
+    elif freq == EnumFreq.MONTH:  # 月频容易训练数据量太少
         len_train = ForecastConfig.LEN_TRAIN_MONTH  # 三年工作日
         # len_train = 72
     else:
@@ -759,34 +595,39 @@ def get_train_df_by_current_date_from_db(
 
 
 if __name__ == "__main__":
-    pass
-    # forecastmethod_list = [
-    #     EnumForecastMethod.ARIMA,
-    #     EnumForecastMethod.HOLTWINTERS,
-    #     # EnumForecastMethod.FBPROPHET,
-    #     EnumForecastMethod.LSTM_SINGLE,
-    #     EnumForecastMethod.VAR
-    # ]
-    #
-    # """test"""
-    # path = r'../data/钢材new.csv'
-    # usecols = ['日期', '热轧板卷4.75mm(raw)',
-    #            '国产铁矿石价格指数', '铁矿62%Fe现货交易基准价', '焦炭综合绝对价格指数']
-    #
-    # history_df = pd.read_csv(path, usecols=usecols)
-    # history_df = history_df[usecols]  # 第一列必须是标的价格序列
-    # history_df.set_index(keys=["日期"], drop=True, inplace=True)
-    # history_df.index = pd.to_datetime(history_df.index)
-    # history_df.sort_index(inplace=True)
-    # # mylog.info(f"history_df: \n{history_df}")
-    #
-    # # 定义预测区间
-    # pre_start_date = "2024-08-22"
-    # roll_steps = 3  # 滚动次数
-    # pre_steps = 5  # 预测期数
-    # # 预测：单因子和多因子
-    # roll_forecast(all_history_df=history_df,
-    #               devp_pre_start_date=pre_start_date,
-    #               roll_steps=roll_steps,
-    #               forecastmethod_list=forecastmethod_list,
-    #               pre_steps=5)
+    # pass
+    forecastmethod_list = [
+        EnumForecastMethod.ARIMA,
+        EnumForecastMethod.HOLTWINTERS,
+        EnumForecastMethod.VAR,
+    ]
+
+    """test"""
+    path = r"../data/钢材new.csv"
+    usecols = [
+        "日期",
+        "热轧板卷4.75mm(raw)",
+        "国产铁矿石价格指数",
+        "铁矿62%Fe现货交易基准价",
+        "焦炭综合绝对价格指数",
+    ]
+
+    history_df = pd.read_csv(path, usecols=usecols)
+    history_df = history_df[usecols]  # 第一列必须是标的价格序列
+    history_df.set_index(keys=["日期"], drop=True, inplace=True)
+    history_df.index = pd.to_datetime(history_df.index)
+    history_df.sort_index(inplace=True)
+    # mylog.info(f"history_df: \n{history_df}")
+
+    # 定义预测区间
+    pre_start_date = "2024-08-22"
+    roll_steps = 3  # 滚动次数
+    pre_steps = 5  # 预测期数
+    # 预测：单因子和多因子
+    roll_forecast(
+        all_history_df=history_df,
+        devp_pre_start_date=pre_start_date,
+        roll_steps=roll_steps,
+        forecastmethod_list=forecastmethod_list,
+        pre_steps=5,
+    )

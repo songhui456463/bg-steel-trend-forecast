@@ -4,21 +4,22 @@
 
 import copy
 import itertools
+from enum import IntEnum
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import stats
-from enum import Enum, IntEnum
 from arch import arch_model
+from scipy import stats
+from scipy.stats import t
 
-from utils.log import mylog
 from preprocess.pretesting import (
     autocorr_test,
     gaussian_test,
     stationary_test,
     hetero_test,
 )
-from scipy.stats import t
+from utils.log import mylog
 
 
 def gaussian_modeling(df: pd.DataFrame):
@@ -193,7 +194,7 @@ def arch_modeling(train_df: pd.DataFrame, pre_steps: int = 1):
     )  # 训练集的模型得到的波动率
     train_mae = np.abs(estimate_value - train_value)
 
-    resid_is_whitenoise = True  # todo temp
+    resid_is_whitenoise = True
     # 3 预测
     pre_mean = None
     pre_variance = None

@@ -3,18 +3,19 @@
 """
 
 import copy
-import numpy as np
-import pandas as pd
 import warnings
 from itertools import product
+
+import numpy as np
+import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
-from statsmodels.tools.sm_exceptions import ValueWarning
+
+from preprocess.pretesting import autocorr_test, gaussian_test
+from utils.log import mylog
+
 
 # warnings.filterwarnings("ignore")
 # warnings.filterwarnings("ignore", category=ValueWarning, module='statsmodels')
-
-from utils.log import mylog
-from preprocess.pretesting import autocorr_test, gaussian_test
 
 
 def arima_model(train_df: pd.DataFrame):
@@ -27,7 +28,7 @@ def arima_model(train_df: pd.DataFrame):
         "ignore", category=UserWarning, module="statsmodels"
     )
 
-    # 【search order】  # todo: 可选 aic or bic 为标准
+    # 【search order】  # 可选 aic or bic 为标准
     copy_train_df = copy.deepcopy(train_df).reset_index(
         drop=True
     )  # 非dateindex，因为不连续日的dateindex输入到ARIMA中，会warning
@@ -70,7 +71,7 @@ def arima_model(train_df: pd.DataFrame):
     #     except Exception as e:  # 忽略拟合失败的模型
     #         print(f"阶数组合 {order} 拟合失败，错误信息: {e}")
     # # if best_model_res:
-    #     # print(f'best_order:{best_order}\n'  # todo（1，1，1）
+    #     # print(f'best_order:{best_order}\n'
     #     #       f'best_bic: {best_bic}\n'
     #     #       f'best_model_res.params: \n{best_model_res.params}')
 
@@ -96,6 +97,6 @@ def arima_model(train_df: pd.DataFrame):
     # if not resid_is_normal:
     #     mylog.warning(f'arima_model with order=({best_order}), resid 不是正态性, 理论上ARIMA建模失败')
 
-    mylog.info(f"arima_model best_order:\n {best_order}")
+    mylog.info(f"arima_model best_order: {best_order}")
     return best_model_res
     # return best_order, best_model_res

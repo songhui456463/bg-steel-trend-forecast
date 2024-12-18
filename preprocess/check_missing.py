@@ -3,13 +3,14 @@
 """
 
 import copy
+from itertools import groupby
+from typing import Union
+
 import numpy as np
 import pandas as pd
-from itertools import groupby
-from typing import Optional, Union
 
-from utils.log import mylog
 from preconfig import PreConfig
+from utils.log import mylog
 
 # pd.set_option('display.precision', 4)  # 设置浮点数精度
 pd.set_option("display.float_format", "{:,.4f}".format)  # 右对齐浮点数
@@ -94,10 +95,6 @@ def check_missing(
         ]
     )
     # mylog.info(f'df:\n{df}')
-
-    # todo 输入的df中date本身就缺失 的情况，是否需要找回缺失的date？怎么找回？
-    # for i in range(len(df)):
-    #     print(df.iloc[i, 0], type(df.iloc[i, 0]))
 
     # 2 检查原始序列的各类缺失值
     # 找出各类缺失值
@@ -199,7 +196,7 @@ def check_missing(
         default=0,
     )
 
-    # 3 判断是否可以修复 todo func
+    # 3 判断是否可以修复
     if (
         numerical_sub_total_ratio <= repairable_ratio
         and numerical_sub_longest_consecutive_missing

@@ -3,7 +3,6 @@ predata config
 pretest config
 """
 
-from enum import Enum
 from pre_enums import EnumRepairMissingMethod
 
 
@@ -11,7 +10,7 @@ class PreConfig:
     # 预处理参数ss
 
     CHECK_MISSING: dict = {
-        "repairable_ratio": 0.9,  # numerical_total_ratio <= 0.6 可修补 todo 如何确定参数
+        "repairable_ratio": 0.9,  # numerical_total_ratio <= 0.6 可修补
         "repairable_longest_consec_ratio": 0.3,  # numerical_longest_consecutive_missing <= int(0.3 * len(df), 可修补
         "is_print": True,  # bool
     }

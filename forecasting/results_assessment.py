@@ -2,19 +2,22 @@
 计算预测结果的评价指标、评价方法
 """
 
+import os
 import sys
-import pandas as pd
-import matplotlib.pyplot as plt
 from typing import Tuple
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import mean_absolute_error
 
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
+
+from config.config import settings
 from utils.log import mylog
 
 
 def cal_fluc_statis(real_pred_df: pd.DataFrame) -> dict:
     """
-    计算df中其两列的平均波动率（绝对值) # todo 改成计算一列的波动率（输入是一列pd.DataFrame）
+    计算df中其两列的平均波动率（绝对值)
     :param real_pred_df: df.columns=[real,pred]
     :return:
     """
@@ -85,6 +88,8 @@ def accuracy_updowntrend(real_pred_df: pd.DataFrame) -> Tuple[dict, float]:
 def forecast_res_plot(
     real_pre_df: pd.DataFrame,
     optimal_ws_dict: dict,
+    is_save: bool = True,
+    is_show: bool = False,
 ):
     """
     绘制各预测模型的预测结果
@@ -92,7 +97,7 @@ def forecast_res_plot(
     :optimal_ws_dict: 各预测模型的预测结果权重
     :return:
     """
-    if sys.platform == "win":
+    if sys.platform == "win32":
         plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
     else:
         plt.rcParams["font.sans-serif"] = "Arial Unicode MS"
@@ -103,7 +108,12 @@ def forecast_res_plot(
     # 遍历每一列，
     for col in real_pre_df.columns:
         if col not in optimal_ws_dict.keys():  # 真实值
-            plt.plot(real_pre_df.index, real_pre_df[col], label=f"{col}")
+            plt.plot(
+                real_pre_df.index,
+                real_pre_df[col],
+                label=f"{col}",
+                linewidth=1.5,
+            )
         else:  # 预测值
             plt.plot(
                 real_pre_df.index,
@@ -112,18 +122,21 @@ def forecast_res_plot(
             )
 
     # 添加标题和标签
-    plt.title(f"价格预测结果: roll_steps={len(real_pre_df)}")
+    plt.title(f"T+1价格预测结果: roll_steps={len(real_pre_df)}")
     plt.xlabel("预测期数")
     plt.ylabel("预测值")
     plt.tick_params(axis="x", rotation=45)
     # 添加图例
     plt.legend()
-    plt.show()
+    if is_save:
+        plt.savefig(
+            os.path.join(settings.OUTPUT_DIR_PATH, "[Total] real_pre_plot.png")
+        )
+    if is_show:
+        plt.show()
 
 
-def forecast_evaluation(
-    real_pre_df: pd.DataFrame,
-):
+def forecast_evaluation(real_pre_df: pd.DataFrame, is_save: bool = True):
     """
     评价预测结果
     :param real_pre_df: index为dateindex,第一列为real值，后面列是各种预测方法的T+1期pre值
@@ -132,13 +145,14 @@ def forecast_evaluation(
     price_df = real_pre_df.iloc[:, [0]]
     multimethod_pre_df = real_pre_df.iloc[:, 1:]
 
+    # 计算指标
     mae_dict = (
         {}
     )  # {'fbprophet_pre_T+1': mae value ,'lstm_single_pre_T+1': mae value ,'weighted_pre': mae value}
     mse_dict = (
         {}
     )  # {'fbprophet_pre_T+1': mse value ,'lstm_single_pre_T+1': mse value ,'weighted_pre': mse value}
-    mape_dict = {}  # todo Q:这种百分比的计算方式不是受分母尺度的影响很大吗？？
+    mape_dict = {}
     mape_unfold_df = pd.DataFrame(
         columns=multimethod_pre_df.columns, index=multimethod_pre_df.index
     )
@@ -164,6 +178,28 @@ def forecast_evaluation(
         mape_dict[method_pre_name] = round(
             mape_unfold_df[method_pre_name].mean(), 8
         )
+
+    # 保存
+    if is_save:
+        file_path = os.path.join(
+            settings.OUTPUT_DIR_PATH, "[Total] accuracy_evaluation.xlsx"
+        )
+        accuracy_df = pd.DataFrame([mse_dict], index=["mse"])
+        accuracy_df = pd.concat(
+            [
+                accuracy_df,
+                pd.DataFrame(mse_dict, index=["mae"]),
+                pd.DataFrame(mape_dict, index=["mape"]),
+            ],
+            axis=0,
+        )
+        with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+            accuracy_df.to_excel(
+                writer, sheet_name=f"accuracy_value", index=True
+            )
+        with pd.ExcelWriter(file_path, mode="a", engine="openpyxl") as writer:
+            mape_unfold_df.to_excel(writer, sheet_name="mape_unfold_df")
+        mylog.info(f"[Total] accuracy_evaluation.xlsx 已保存本地!")
 
     return (
         mae_dict,

@@ -2,7 +2,7 @@
 多因子分析过程中的枚举类
 """
 
-from enum import Enum, IntEnum
+from enum import Enum
 
 
 class Enum_allfactor_lt_corr_res_DF(Enum):

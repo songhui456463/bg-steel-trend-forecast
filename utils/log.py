@@ -2,8 +2,8 @@
 create log tool
 """
 
-import os
 import logging
+import os
 from logging import config, Logger
 
 from config.config import settings

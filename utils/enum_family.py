@@ -2,7 +2,7 @@
 公共枚举类们
 """
 
-from enum import Enum, IntEnum
+from enum import Enum
 
 
 class EnumVariety(Enum):
@@ -51,17 +51,16 @@ class EnumForecastMethod(Enum):
         EnumForecastMethodType.MULTI,
     )  # 使用多因子预测价格序列
     VAR = ("var", EnumForecastMethodType.MULTI)
-    # todo 其他模型
 
     """简单拟合"""
     NORMAL_FIT = ("normalfit", EnumForecastMethodType.SIMPLE_FIT)
     T_FIT = ("t_fit", EnumForecastMethodType.SIMPLE_FIT)
     GARCH_FIT = ("garchfit", EnumForecastMethodType.SIMPLE_FIT)
 
-    def __init__(self, value, type):
+    def __init__(self, value, type_):
         self._value_ = value
-        self.type = type
+        self.type = type_
 
 
 if __name__ == "__main__":
-    list = [EnumForecastMethod.ARIMA, EnumForecastMethod.VAR]
+    lst = [EnumForecastMethod.ARIMA, EnumForecastMethod.VAR]
