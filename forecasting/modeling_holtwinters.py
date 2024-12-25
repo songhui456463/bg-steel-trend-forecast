@@ -8,11 +8,13 @@ import warnings
 from itertools import product
 from typing import Tuple
 
+import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
-from preprocess.pretesting import autocorr_test
+from preprocess.pre_enums import EnumPretestingReturn
+from preprocess.pretesting import autocorr_test, gaussian_test
 from utils.log import mylog
 
 
@@ -30,123 +32,86 @@ def holtwinters_model_by_gridsearch(train_df: pd.DataFrame):
         drop=True
     )  # 非dateindex，因为不连续日的dateindex输入到ARIMA中，会warning
 
-    # # 网格参数
-    # trend = ["add", "mul"]
-    # damped_trend = [True, False]  # trend=None时，damped_trend不能为True
-    # seasonal = [None]
-    # # seasonal = ['add', 'mul', None]
-    # trend_dampedtrend_seasonal = list(
-    #     product(trend, damped_trend, seasonal)
-    # ) + [(None, False, None)]
-    # mylog.info(f"holtwinters_model_by_gridsearch with {trend_dampedtrend_seasonal} orders")
-    # # 初始值
-    # best_bic = np.inf
-    # # best_order = ('mul', False, None)
-    # best_order = None
-    # best_model_res = None
-    #
-    # # 网格搜索确定参数
-    # for order in trend_dampedtrend_seasonal:
-    #     try:
-    #         # 拟合
-    #         if order[2] == None:  # seasonal==None
-    #             model_res = ExponentialSmoothing(
-    #                 copy_train_df,
-    #                 trend=order[0],
-    #                 damped_trend=order[1],
-    #                 seasonal=None,
-    #             ).fit()
-    #             mylog.info(f"holtwinters_model with order=({order})")
-    #         else:
-    #             model_res = ExponentialSmoothing(
-    #                 copy_train_df,
-    #                 trend="add",
-    #                 damped_trend=False,
-    #                 seasonal="add",
-    #                 seasonal_periods=250,
-    #             ).fit()
-    #         # 比较选择best_model_res
-    #         if model_res.bic < best_bic:
-    #             best_bic = model_res.bic
-    #             best_order = order
-    #             best_model_res = model_res
-    #             mylog.info(f"holtwinters_model with order=({order}) bic={best_bic}")
-    #     except FloatingPointError  as e:  # 忽略拟合失败的模型
-    #         mylog.info(f"阶数组合 {order} 拟合失败，错误信息: {e}")
-    #     except Exception as e:  # 忽略拟合失败的模型
-    #         mylog.info(f"阶数组合 {order} 拟合失败，错误信息: {e}")
     # 网格参数
-    # trend = ["add", "mul"]
-    # damped_trend = [True, False]
+    trend = ["add", "mul"]
+    damped_trend = [True, False]  # trend=None时，damped_trend不能为True
+    seasonal = [None]
     # seasonal = ['add', 'mul', None]
-    # seasonal_periods = [5,7,15]
-    #
-    #     # 构建网格参数组合
-    #     grid_params = []
-    #     for t, d, s in product(trend, damped_trend, seasonal):
-    #         if s is not None:
-    #             for sp in seasonal_periods:
-    #                 grid_params.append((t, d, s, sp))
-    #         else:
-    #             grid_params.append((t, d, s, None))
-    #
-    #     mylog.info(f"holtwinters_model_by_gridsearch with {grid_params} orders")
-    #     best_bic = np.inf
-    #     best_aic = np.inf
-    #     best_order = None
-    #     best_model_res = np.inf
-    #
-    #     # 网格搜索确定参数
-    #     for order in grid_params:
-    #         try:
-    #             model = ExponentialSmoothing(
-    #                 copy_train_df,
-    #                 trend=order[0],
-    #                 damped_trend=order[1],
-    #                 seasonal=order[2],
-    #                 seasonal_periods=order[3] if order[3] else None,
-    #                 use_boxcox=True,
-    #             )
-    #
-    #             # 拟合模型
-    #             model_res = model.fit()
-    #             if model_res < best_bic or model_res.aic < best_aic:
-    #                 best_bic = model_res.bic
-    #                 best_aic = model_res.aic
-    #                 best_order = order
-    #                 best_model_res = model_res
-    #                 mylog.info(f"holtwinters_model with order=({order}) bic={best_bic} aic={best_aic}")
-    #
-    #         except ValueError as e:
-    #             mylog.warning(f"阶数组合 {order} 拟合失败，错误信息: {e}")
-    #         except Exception as e:
-    #             mylog.warning(f"阶数组合 {order} 拟合失败，错误信息: {e}")
-    # # 使用默认参数
-    # if not best_model_res:
-    #     default_order = ("mul", False, None,None)  # 短期预测偏好非阻尼
-    #     default_model_res = ExponentialSmoothing(
-    #         train_df,
-    #         trend=default_order[0],
-    #         damped_trend=default_order[1],
-    #         seasonal=default_order[2],
-    #         seasonal_periods=None,
-    #     ).fit()
-    #     best_order = default_order
-    #     best_model_res = default_model_res
-    #
-    # # mylog.info(f'----------------- verify resid ------------------')
-    # resid = best_model_res.resid.to_frame()
-    # resid_is_autocorr = autocorr_test(resid).get("is_corr", None)
-    # resid_is_normal = gaussian_test(resid).get("is_gaussian", None)
-    # if resid_is_autocorr:
-    #     mylog.warning(
-    #         f"holtwinters_model with best_order=({best_order}), resid 存在自相关性, 理论上holtwinters建模失败"
-    #     )
-    # # if not resid_is_normal:
-    # #     mylog.warning(f'holtwinters_model with order=({best_order}), resid 不是正态性, 理论上holtwinters建模失败')
-    #
-    # mylog.info(f"holtwinters_model best_order:\n {best_order}")
-    # return best_order, best_model_res
+    trend_dampedtrend_seasonal = list(
+        product(trend, damped_trend, seasonal)
+    ) + [(None, False, None)]
+    mylog.info(
+        f"holtwinters_model_by_gridsearch with {trend_dampedtrend_seasonal} orders"
+    )
+    # 初始值
+    best_bic = np.inf
+    # best_order = ('mul', False, None)
+    best_order = None
+    best_model_res = None
+
+    # 网格搜索确定参数
+    for order in trend_dampedtrend_seasonal:
+        try:
+            # 拟合
+            if order[2] == None:  # seasonal==None
+                model_res = ExponentialSmoothing(
+                    copy_train_df,
+                    trend=order[0],
+                    damped_trend=order[1],
+                    seasonal=None,
+                ).fit()
+                mylog.info(f"holtwinters_model with order=({order})")
+            else:
+                model_res = ExponentialSmoothing(
+                    copy_train_df,
+                    trend="add",
+                    damped_trend=False,
+                    seasonal="add",
+                    seasonal_periods=250,
+                ).fit()
+            # 比较选择best_model_res
+            if model_res.bic < best_bic:
+                best_bic = model_res.bic
+                best_order = order
+                best_model_res = model_res
+                mylog.info(
+                    f"holtwinters_model with order=({order}) bic={best_bic}"
+                )
+        except FloatingPointError as e:  # 忽略拟合失败的模型
+            mylog.info(f"阶数组合 {order} 拟合失败，错误信息: {e}")
+        except Exception as e:  # 忽略拟合失败的模型
+            mylog.info(f"阶数组合 {order} 拟合失败，错误信息: {e}")
+
+    # 使用默认参数
+    if not best_model_res:
+        default_order = ("mul", False, None, None)  # 短期预测偏好非阻尼
+        default_model_res = ExponentialSmoothing(
+            train_df,
+            trend=default_order[0],
+            damped_trend=default_order[1],
+            seasonal=default_order[2],
+            seasonal_periods=None,
+        ).fit()
+        best_order = default_order
+        best_model_res = default_model_res
+
+    # mylog.info(f'----------------- verify resid ------------------')
+    resid = best_model_res.resid.to_frame()
+    resid_is_autocorr = autocorr_test(resid).get(
+        EnumPretestingReturn.autocorrTest_is_corr
+    )
+    resid_is_normal = gaussian_test(resid).get(
+        EnumPretestingReturn.gaussianTest_is_gaussian, None
+    )
+    if resid_is_autocorr:
+        mylog.warning(
+            f"holtwinters_model with best_order=({best_order}), resid 存在自相关性, 理论上holtwinters建模失败"
+        )
+    # if not resid_is_normal:
+    #     mylog.warning(f'holtwinters_model with order=({best_order}), resid 不是正态性, 理论上holtwinters建模失败')
+
+    mylog.info(f"holtwinters_model best_order:\n {best_order}")
+    return best_order, best_model_res
 
 
 def rolling_window_split(data, train_size=0.8, test_step=1):
@@ -254,9 +219,6 @@ def holtwinters_model_by_cv(
 
                 # mylog.info(f"Order ({order}) - Fold MSE: {mse},n_splits={n_splits}")
 
-            # except ValueError as e:
-            #     mylog.warning(f"阶数组合 {order} 拟合失败，错误信息: {e}")
-            #     break
             except Exception as e:
                 mylog.warning(f"阶数组合 {order} 拟合失败，错误信息: {e}")
                 break
@@ -283,7 +245,9 @@ def holtwinters_model_by_cv(
 
         # 检查残差
         resid = best_model_res.resid.to_frame()
-        resid_is_autocorr = autocorr_test(resid).get("is_corr", None)
+        resid_is_autocorr = autocorr_test(resid).get(
+            EnumPretestingReturn.autocorrTest_is_corr, None
+        )
 
         if resid_is_autocorr:
             mylog.warning(

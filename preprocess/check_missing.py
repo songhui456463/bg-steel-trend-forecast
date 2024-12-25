@@ -3,14 +3,13 @@
 """
 
 import copy
-from itertools import groupby
-from typing import Union
-
 import numpy as np
 import pandas as pd
+from itertools import groupby
+from typing import Optional, Union
 
-from preconfig import PreConfig
 from utils.log import mylog
+from preconfig import PreConfig
 
 # pd.set_option('display.precision', 4)  # 设置浮点数精度
 pd.set_option("display.float_format", "{:,.4f}".format)  # 右对齐浮点数

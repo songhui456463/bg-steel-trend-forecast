@@ -13,9 +13,13 @@ from factor.factor_manager import multifactor_align_index, multifactor_ayalysis
 from factor.factor_resampling import check_freq
 from forecasting.forecast_config import FORECASTCONFIG, ForecastConfig
 from forecasting.forecast_manager import roll_forecast
+from forecasting.forecast_trend import (
+    cal_trend_by_value,
+)
 from forecasting.results_assessment import (
     forecast_res_plot,
     forecast_evaluation,
+    res_plot_oneroll_trend,
 )
 from utils.data_read import read_x_by_map
 from utils.enum_family import EnumFreq, EnumForecastMethod
@@ -33,10 +37,8 @@ class OneForecast:
         # 标的序列
         self.y_freq: Optional[EnumFreq] = None
         self.y_lt_spare_df = None  #  =.iloc[analyse_y_startdate_idx - max_lt_param_map.get(f.y_freq) - 5 : analyse_y_startdate_idx]
-        self.y_train_df = (
-            None  # .loc[analyse_y_startdate : analyse_y_end_date]
-        )
-        self.y_test_df = None  # .iloc[get_loc(analyse_y_end_date)+1 : get_loc(analyse_y_end_date)+1 + (roll_steps+pre_steps-1)]
+        self.y_train_df = None  # .loc[analyse_y_startdate : analyse_y_enddate]
+        self.y_test_df = None  # .iloc[get_loc(analyse_y_enddate)+1 : get_loc(analyse_y_end_date)+1 + (roll_steps+pre_steps-1)]
         self.y_df = None  # 参与到多因子分析中的Price列，= y_lt_spare_df + y_analyse_df + y_test_df）
         self.y_history_df = (
             None  # 参与到预测模型中的标的序列，= y_train_df + y_test_df
@@ -63,7 +65,8 @@ class OneForecast:
             {}
         )  # 各预测方法的预测结果{'method_name':realpre_df}
         self.optimal_ws_dict: dict = {}  # 各预测方法的训练权重
-        self.weighted_prerealT1df = None  # 真实值和各预测方法的T+1期预测值。形如columns={real,arima_pre_T+1,hw_pre_T+1, ..., weighted_pre_T+1 }
+        self.weighted_prerealT1df = None  # 真实值和各预测方法的T+1期预测值。形如columns={real, arima_pre_T+1, hw_pre_T+1, ..., weighted_pre_T+1 }
+        self.trend_weighted_realpredf = None  # 基于价格预测值来计算预测趋势。形如columns = [trend_real, trend_pre_roll_0, prob_trend_pre_roll_0,  trend_pre_roll_1, prob_trend_pre_roll_1, ...]
 
         """预测结果评估"""
         self.mae_dict = {}  # 各预测方法的T+1期预测值与真实值的mae
@@ -119,11 +122,14 @@ def run(
         + 1
         + (ForecastConfig.ROLL_STEPS + ForecastConfig.PRE_STEPS - 1)
     ]
+    # mylog.info(f'y_train_df:\n{f.y_train_df}')
+    # mylog.info(f'y_test_df:\n{f.y_test_df}')
 
     # 参与多因子分析的标的序列
     f.y_df = pd.concat([f.y_lt_spare_df, f.y_train_df, f.y_test_df], axis=0)
     # 参与预测过程的标的序列
     f.y_history_df = pd.concat([f.y_train_df, f.y_test_df], axis=0)
+    # mylog.info(f'y_history_df:\n{f.y_history_df}')
 
     """0-2 重采样协从因子序列"""
     resampling_xs_df = multifactor_align_index(
@@ -139,7 +145,7 @@ def run(
         y_end=ForecastConfig.ANALYSE_Y_ENDDATE,
         freq=check_freq(f.y_df),
     )
-    mylog.info(f"keyfactors_df.columns:\n{keyfactors_df.columns}")
+    # mylog.info(f'keyfactors_df.columns:\n{keyfactors_df.columns}')
 
     """2 合并预测所需的历史数据：合并价格列和keyfactors列"""
     if not keyfactors_df.empty:
@@ -178,9 +184,17 @@ def run(
     # 3.1 决定预测方法：价格序列 时间特征分析
     # f.forecastmethod_list = run_pretesting(f.y_df)
     f.forecastmethod_list = [
-        EnumForecastMethod.ARIMA,
-        EnumForecastMethod.HOLTWINTERS,
-        # EnumForecastMethod.VAR  # 注意：若数据量不够，不能var建模
+        # EnumForecastMethod.ARIMA,
+        # EnumForecastMethod.HOLTWINTERS,
+        # EnumForecastMethod.FBPROPHET,
+        EnumForecastMethod.LSTM_SINGLE,
+        EnumForecastMethod.LSTM_SINGLE_PATTERN_ONE,
+        # EnumForecastMethod.TRANSFORMER_SINGLE,
+        # EnumForecastMethod.GARCH,
+        # EnumForecastMethod.VAR,  # 注意：若数据量不够，不能var建模
+        EnumForecastMethod.LSTM_MULTIPLE,
+        EnumForecastMethod.LSTM_MULTIPLE_PATTERN_ONE,
+        # EnumForecastMethod.TRANSFORMER_MULTIPLE,
     ]
 
     # 3.2 滚动预测
@@ -194,12 +208,37 @@ def run(
             is_save=True,
         )
     )
+    # 3.3 基于预测绝对值计算趋势
+    # 计算趋势法一：基于各个method价格预测值计算各个method的趋势预测值，然后计算总体趋势
+    f.trend_weighted_realpredf = cal_trend_by_value(
+        last_real_df=f.y_train_df.iloc[[-1]],
+        method_realpredf_dict=f.method_realpredf_dict,
+        optimal_ws_dict=f.optimal_ws_dict,
+    )
+    # trend_demo(f.trend_weighted_realpredf)
+
+    # 计算趋势法二：基于各个method价格预测值计算weighted价格预测值，然后计算总体趋势
+    # trend_realpredf = cal_trend_by_weighted_value(last_real_df=f.y_train_df.iloc[[-1]],
+    #                                               method_realpredf_dict=f.method_realpredf_dict,
+    #                                               optimal_ws_dict=f.optimal_ws_dict,
+    #                                               is_save=True,
+    #                                               )
+
+    # 绘制前几次roll的预测pre_steps期
+    for roll_r in range(min(3, ForecastConfig.ROLL_STEPS)):
+        res_plot_oneroll_trend(
+            method_realpredf_dict=f.method_realpredf_dict,
+            optimal_ws_dict=f.optimal_ws_dict,
+            roll_r=roll_r,
+            is_save=True,
+        )
+
     # mylog.info(f'================= 所有方法预测完成的结果 method_realpredf_dict:')
     # for method, realpredf in f.method_realpredf_dict.items():
     #     mylog.info(f'method=【{method}】, realpredf:\n{realpredf}')
     #     pass
 
-    # 3.3 T+1期预测值绘图和评估
+    # 3.4 T+1期预测值绘图和评估
     mylog.info(
         f"\n"
         f"============================================== 预测结果评估 =============================================="
@@ -221,7 +260,7 @@ def run(
     mylog.info(f"mae_dict:\n{f.mae_dict}")
     mylog.info(f"mse_dict:\n{f.mse_dict}")
     mylog.info(f"mape_dict:\n{f.mape_dict}")
-    mylog.info(f"mape_unfold_df:\n{f.mape_unfold_df}")
+    # mylog.info(f'mape_unfold_df:\n{f.mape_unfold_df}')
 
 
 if __name__ == "__main__":

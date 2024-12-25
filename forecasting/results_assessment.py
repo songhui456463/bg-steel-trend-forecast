@@ -2,9 +2,9 @@
 计算预测结果的评价指标、评价方法
 """
 
+import copy
 import os
-import sys
-from typing import Tuple
+from typing import Tuple, Dict
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -17,7 +17,7 @@ from utils.log import mylog
 
 def cal_fluc_statis(real_pred_df: pd.DataFrame) -> dict:
     """
-    计算df中其两列的平均波动率（绝对值)
+    计算df其中两列的平均波动率（绝对值)
     :param real_pred_df: df.columns=[real,pred]
     :return:
     """
@@ -85,6 +85,95 @@ def accuracy_updowntrend(real_pred_df: pd.DataFrame) -> Tuple[dict, float]:
     return accuracy_dict, accuracy_ratio
 
 
+def res_plot_oneroll_trend(
+    method_realpredf_dict: Dict[str, pd.DataFrame],
+    optimal_ws_dict,
+    roll_r: int = 0,
+    is_save: bool = True,
+):
+    """
+    绘制一次roll的trend预测绝对值，默认是第0次roll
+    :param method_realpredf_dict:
+    :return:
+    """
+    method_list = list(method_realpredf_dict.keys())
+    arbi_realpredf = next(iter(method_realpredf_dict.values()))
+    price_name = arbi_realpredf.columns[0]
+    pre_roll_r = [
+        colname
+        for colname in arbi_realpredf.columns
+        if f"roll_{roll_r}" in colname
+    ][0]
+
+    # 从method_realpredf_dict中取出roll0这一次预测的pre_steps步预测值，放到一个df中
+    oneroll_trend_realpredf = copy.deepcopy(arbi_realpredf[[price_name]])
+    for method_name, realpredf in method_realpredf_dict.items():
+        oneroll_trend_realpredf[f"{method_name}_{pre_roll_r}"] = realpredf[
+            pre_roll_r
+        ]
+    # 计算加权列
+    oneroll_trend_realpredf[f"weighted_{pre_roll_r}"] = sum(
+        [
+            oneroll_trend_realpredf[f"{method_name}_{pre_roll_r}"]
+            * optimal_ws_dict[f"{method_name}_pre_T+1"]
+            for method_name in method_list
+        ]
+    )
+    # 去除不在当前次roll的预测日期
+    oneroll_trend_realpredf.dropna(how="any", inplace=True)
+
+    # 绘图
+    plt.figure(figsize=(14, 10))
+    # 真实值
+    plt.plot(
+        oneroll_trend_realpredf.index,
+        oneroll_trend_realpredf[price_name],
+        label=price_name,
+        linewidth=1.5,
+    )
+    # 每一个method的预测列
+    for method_name in method_list:
+        plt.plot(
+            oneroll_trend_realpredf.index,
+            oneroll_trend_realpredf[f"{method_name}_{pre_roll_r}"],
+            label=f"{method_name}_{pre_roll_r}(w={optimal_ws_dict[f'{method_name}_pre_T+1']})",
+            linewidth=1.5,
+        )
+    # weighted预测
+    plt.plot(
+        oneroll_trend_realpredf.index,
+        oneroll_trend_realpredf[f"weighted_{pre_roll_r}"],
+        label=f"weighted_{pre_roll_r}",
+        linewidth=1.5,
+    )
+
+    plt.xticks(
+        ticks=oneroll_trend_realpredf.index,
+        labels=oneroll_trend_realpredf.index.strftime("%Y-%m-%d"),
+    )
+    # 添加标题和标签
+    plt.title(
+        f"roll_{roll_r}价格预测结果: pre_steps={len(oneroll_trend_realpredf)}"
+    )
+    plt.xlabel("预测期")
+    plt.ylabel("预测值")
+    plt.tick_params(axis="x", rotation=45)
+    # 添加图例
+    plt.legend()
+    if is_save:
+        oneroll_res_plot_dir = os.path.join(
+            settings.OUTPUT_DIR_PATH, "[Total] trend_oneroll_realpre_plot"
+        )
+        os.makedirs(oneroll_res_plot_dir, exist_ok=True)
+        plt.savefig(
+            os.path.join(
+                oneroll_res_plot_dir,
+                f"[Total] trend_roll_{roll_r}_realpre_plot.png",
+            )
+        )
+    plt.show()
+
+
 def forecast_res_plot(
     real_pre_df: pd.DataFrame,
     optimal_ws_dict: dict,
@@ -97,12 +186,6 @@ def forecast_res_plot(
     :optimal_ws_dict: 各预测模型的预测结果权重
     :return:
     """
-    if sys.platform == "win32":
-        plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
-    else:
-        plt.rcParams["font.sans-serif"] = "Arial Unicode MS"
-    plt.rcParams["axes.unicode_minus"] = False  # 处理负号
-
     # 绘制折线图
     plt.figure(figsize=(14, 10))
     # 遍历每一列，
@@ -120,6 +203,9 @@ def forecast_res_plot(
                 real_pre_df[col],
                 label=f"{col} (weight={optimal_ws_dict.get(col)})",
             )
+    plt.xticks(
+        ticks=real_pre_df.index, labels=real_pre_df.index.strftime("%Y-%m-%d")
+    )
 
     # 添加标题和标签
     plt.title(f"T+1价格预测结果: roll_steps={len(real_pre_df)}")
@@ -188,7 +274,7 @@ def forecast_evaluation(real_pre_df: pd.DataFrame, is_save: bool = True):
         accuracy_df = pd.concat(
             [
                 accuracy_df,
-                pd.DataFrame(mse_dict, index=["mae"]),
+                pd.DataFrame(mae_dict, index=["mae"]),
                 pd.DataFrame(mape_dict, index=["mape"]),
             ],
             axis=0,

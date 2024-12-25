@@ -13,7 +13,7 @@ class FORECASTCONFIG:
     """序列名称"""
 
     # 候选因子名称列表
-    # candi_factors_name: list = list(factor_location_map.keys())  # 使用所有因子 (包含价格序列)
+    # CANDI_FACTORS_NAME: list = list(factor_location_map.keys())  # 使用所有因子 (不包含价格序列)
     CANDI_FACTORS_NAME: list = [  # 使用自选因子
         "销量:液压挖掘机:主要企业:出口(外销):当月值",
         "销量:液压挖掘机:主要企业:总计:当月值",
@@ -23,9 +23,9 @@ class FORECASTCONFIG:
         "彩电销量（月）",
         "制冷:冰箱:销量:当月值",
         "家电:洗衣机:销量:当月值",
-        "中国制造业PMI",
-        "中国CPI:环比",
-        "美国:耐用品:库存:季调（月）",
+        "制造业PMI",
+        "CPI:环比",
+        "美国:耐用品:库存:季调",
         # '美国:CPI:当月环比',
         "美国:PPI:所有商品:当月环比",
         "热轧板卷：消费量：中国（周）",
@@ -56,6 +56,8 @@ class FORECASTCONFIG:
         "精煤：样本洗煤厂（110家）：库存：中国（周）",
     ]
     # 价格序列
+    # TARGET_NAME: str = '冷轧取向硅钢：30Q120：0.3*980*C：市场价：等权平均（周）'
+    # TARGET_NAME: str = '冷轧取向硅钢：30Q120：0.3*980*C：市场价：等权平均（月）'  # 标的平稳序列之后多项存在自相关，测试一下
     # TARGET_NAME: str = '国际热轧板卷汇总价格：中国市场（日）'  # 日频测试
     TARGET_NAME: str = "国际热轧板卷汇总价格：中国市场（周）"  # 周频测试
     # TARGET_NAME: str = '国际热轧板卷汇总价格：中国市场（月）'  # 月频测试
@@ -64,21 +66,27 @@ class FORECASTCONFIG:
     # 因子分析 ANALYSE_Y_STARTDATE <= date < ANALYSE_Y_ENDDATE     #  注意：2个date最好是标的序列中有的日期；若不是，则会根据y_freq被统一到当周周五或当月第一天
     # 日频测试
     # ANALYSE_Y_STARTDATE: str = "2020-01-02"  # 对price序列的[y_start_date, y_end_date]期间的子序列进行相关性检测
-    # ANALYSE_Y_ENDDATE: str = "2024-01-02"  # today期
+    # ANALYSE_Y_ENDDATE: str = "2023-03-02"  # today期
+    # PRE_START_DATE: str = '2023-03-03'  # analyse_y_enddate的下一期。实际预测的第一期是pre_start_date及之后的第一个按频度的有效的日子
+
     # 周频测试
-    ANALYSE_Y_STARTDATE: str = "2015-01-01"
-    ANALYSE_Y_ENDDATE: str = "2022-03-01"
+    ANALYSE_Y_STARTDATE: str = "2019-01-01"  # 2016-01-01
+    ANALYSE_Y_ENDDATE: str = "2022-06-02"
+    PRE_START_DATE: str = (
+        "2022-06-09"  # 周频测试 取值使analyse_y_enddate和pre_start_date在相邻的不同周
+    )
+
     # 月频测试
-    # ANALYSE_Y_STARTDATE: str = "2015-10-01"
+    # ANALYSE_Y_STARTDATE: str = "2016-10-01"
     # ANALYSE_Y_ENDDATE: str = "2021-11-01"
 
     # 预测
     # PRE_START_DATE: str = '2024-01-02'  # analyse_y_enddate的下一期。实际预测的第一期是pre_start_date及之后的第一个按频度的有效的日子
-    PRE_START_DATE: str = "2022-03-01"  # 周频测试
-    # PRE_START_DATE: str = "2021-12-01"  # 月频测试
+    # PRE_START_DATE: str = '2022-03-08'  # 周频测试 取值使analyse_y_enddate和pre_start_date在相邻的不同周
+    # PRE_START_DATE: str = '2021-12-01'  # 月频测试
 
-    ROLL_STEPS: int = 12  # 滚动测试的滚动步数
-    PRE_STEPS: int = 6  # 每次预测的预测步数
+    ROLL_STEPS: int = 20  # 滚动测试的滚动步数
+    PRE_STEPS: int = 5  # 每次预测的预测步数
 
     """预测过程"""
     # 训练数据长度
@@ -91,7 +99,12 @@ class FORECASTCONFIG:
         # 单因子模型
         EnumForecastMethod.ARIMA: 9999,
         EnumForecastMethod.HOLTWINTERS: 9999,
+        EnumForecastMethod.FBPROPHET: 9999,
+        EnumForecastMethod.LSTM_SINGLE: 9999,
+        EnumForecastMethod.TRANSFORMER_SINGLE: 9999,
         # 多因子模型
+        EnumForecastMethod.LSTM_MULTIPLE: 9999,
+        EnumForecastMethod.TRANSFORMER_MULTIPLE: 9999,
         EnumForecastMethod.VAR: 9999,
     }
 

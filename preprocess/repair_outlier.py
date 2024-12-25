@@ -1,3 +1,5 @@
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -120,7 +122,10 @@ def plot_repaired(
     repaired_data = repaired_df[start_date:end_date]
     # 获取列名
     price = original_data.columns[0]
-    plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
+    if sys.platform == "win32":
+        plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
+    else:
+        plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # Arial Unicode MS
     plt.rcParams["axes.unicode_minus"] = False  # 处理负号
 
     plt.figure(figsize=(12, 6))

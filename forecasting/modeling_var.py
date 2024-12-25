@@ -3,22 +3,24 @@
 """
 
 import copy
-import os
+import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.stats.diagnostic
+from sklearn.preprocessing import MinMaxScaler
 from statsmodels.tsa.vector_ar.var_model import VAR
 
-from config.config import settings
 from preprocess.pre_enums import EnumPretestingReturn
 from preprocess.pretesting import stationary_test
 from utils.log import mylog
 
-plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
 plt.rcParams["axes.unicode_minus"] = False  # 处理负号
-
+if sys.platform == "win32":
+    plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
+else:
+    plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # Arial Unicode MS
 
 def inverse_diff(before_diff_raw_df, diff_pre_df):
     """
@@ -122,63 +124,40 @@ def var_model(
         )
 
     # if cusum_pvalue >= 0.05:
-    if is_ir_and_fred:
-        # 脉冲响应
-        # ax = varmax_model_res.impulse_responses(steps=12, orthogonalized=True).plot(figsize=(12, 8))  # statsmodels中VAR模型没有.impulse_responses，VARMAX中有
-        # plt.show()
-        impulse_res = model_res.irf(periods=12)
-        impulse_res.plot(
-            figsize=(24, 16), orth=True, signif=0.95, seed=10
-        )  # MonteCarlo预测脉冲响应。横坐标为预测期数，纵坐标为受冲击的影响
-        if is_save_ir_and_fevd:
-            plt.savefig(
-                os.path.join(
-                    settings.OUTPUT_DIR_PATH, "[var] impulse_response.png"
-                )
-            )
-        # plt.show()
-
-        # 方差分解
-        fevd = model_res.fevd(periods=10)
-        # mylog.info(f'var fevd.summary():\n{fevd.summary()}')
-
-        fevd.plot(figsize=(12, 16))
-        if is_save_ir_and_fevd:
-            # 保存fevd数值
-            file_name = os.path.join(
-                settings.OUTPUT_DIR_PATH, "[var] fevd.xlsx"
-            )
-            for col_idx in range(diff_xs_df.shape[1]):
-                col_name = diff_xs_df.columns[col_idx]
-                sheet_name = f"FEVD_for_{col_name}".replace(":", "_").replace(
-                    "：", "_"
-                )  # 注意excel sheetname的命名规范（不能有: ：）
-                fevd_mat = fevd.decomp[col_idx]
-                fevd_df = pd.DataFrame(
-                    data=fevd_mat,
-                    columns=diff_xs_df.columns,
-                    index=[i for i in range(1, fevd_mat.shape[0] + 1)],
-                )
-                if not os.path.exists(file_name):
-                    with pd.ExcelWriter(
-                        file_name, engine="openpyxl"
-                    ) as writer:
-                        fevd_df.to_excel(
-                            writer, sheet_name=sheet_name, index=True
-                        )
-                else:
-                    with pd.ExcelWriter(
-                        file_name, mode="a", engine="openpyxl"
-                    ) as writer:
-                        fevd_df.to_excel(
-                            writer, sheet_name=sheet_name, index=True
-                        )
-
-            # 保存fevd图像
-            plt.savefig(
-                os.path.join(settings.OUTPUT_DIR_PATH, "[var] fevd.png")
-            )
-        # plt.show()
+    # if is_ir_and_fred:
+    #     # 脉冲响应
+    #     # ax = varmax_model_res.impulse_responses(steps=12, orthogonalized=True).plot(figsize=(12, 8))  # statsmodels中VAR模型没有.impulse_responses，VARMAX中有
+    #     # plt.show()
+    #     impulse_res = model_res.irf(periods=12)
+    #     impulse_res.plot(figsize=(24, 16), orth=True, signif=0.95, seed=10)  # MonteCarlo预测脉冲响应。横坐标为预测期数，纵坐标为受冲击的影响
+    #     if is_save_ir_and_fevd:
+    #         plt.savefig(os.path.join(settings.OUTPUT_DIR_PATH, '[var] impulse_response.png'))
+    #     # plt.show()
+    #
+    #     # 方差分解
+    #     fevd = model_res.fevd(periods=10)
+    #     # mylog.info(f'var fevd.summary():\n{fevd.summary()}')
+    #     fevd.plot(figsize=(12, 16))
+    #     if is_save_ir_and_fevd:
+    #         # 保存fevd数值
+    #         file_name = os.path.join(settings.OUTPUT_DIR_PATH, '[var] fevd.xlsx')
+    #         for col_idx in range(diff_xs_df.shape[1]):
+    #             col_name = diff_xs_df.columns[col_idx]
+    #             sheet_name = (f'FEVD_for_{col_name}'
+    #                           .replace(":", "_")
+    #                           .replace("：","_"))  # 注意excel sheetname的命名规范（不能有: ：）
+    #             fevd_mat = fevd.decomp[col_idx]
+    #             fevd_df = pd.DataFrame(data=fevd_mat,columns=diff_xs_df.columns,index=[i for i in range(1,fevd_mat.shape[0]+1)])
+    #             if not os.path.exists(file_name):
+    #                 with pd.ExcelWriter(file_name, engine='openpyxl') as writer:
+    #                     fevd_df.to_excel(writer, sheet_name=sheet_name, index=True)
+    #             else:
+    #                 with pd.ExcelWriter(file_name, mode='a', engine='openpyxl') as writer:
+    #                     fevd_df.to_excel(writer, sheet_name=sheet_name, index=True)
+    #
+    #         # 保存fevd图像
+    #         plt.savefig(os.path.join(settings.OUTPUT_DIR_PATH, '[var] fevd.png'))
+    #     # plt.show()
 
     return best_lags, model_res
 
@@ -201,6 +180,18 @@ def var_forcast(
     price_name = train_xs_df_copy.columns[0]
     diff_xs_df = copy.deepcopy(train_xs_df_copy)
 
+    # 分别对各列因子做标准化, 消除不同因子量纲的影响
+    # mylog.info(f'标准化前的diff_xs_df: \n{diff_xs_df}')
+    scaler_dict = {}
+    for col in diff_xs_df.columns:
+        # scaler = StandardScaler()
+        scaler = MinMaxScaler()
+        diff_xs_df[col] = scaler.fit_transform(
+            diff_xs_df[[col]]
+        )  # 即使是input多列,scaler内部也是对每一列分别标准化
+        scaler_dict[col] = scaler  # 【和不标准化的预测结果一样】
+    # mylog.info(f'标准化后的diff_xs_df: \n{diff_xs_df}')
+
     # 1 逐列检查各因子的平稳性并差分
     xs_diff_degree = {}
     # 记录价格序列的差分过程，用于后面逆差分
@@ -209,7 +200,7 @@ def var_forcast(
     for col in diff_xs_df.columns:
         # 检查差分阶数
         cur_col_degree = stationary_test(diff_xs_df[[col]]).get(
-            EnumPretestingReturn.stationaryTest_stationary_d.value
+            EnumPretestingReturn.stationaryTest_stationary_d
         )
 
         xs_diff_degree[col] = cur_col_degree
@@ -241,9 +232,9 @@ def var_forcast(
     # mylog.info(f'逐列差分、去除nan后的diff_xs_df:\n{diff_xs_df}')
 
     # 2 各列都平稳后，滚动预测
-    pres_xs_df = pd.DataFrame(columns=train_xs_df_copy.columns)
+    # pres_xs_df = pd.DataFrame(columns=train_xs_df_copy.columns)
+    pres_xs_df = None
     for pre_i in range(pre_steps):
-
         # 每预测多少步更新一次模型
         if pre_i % varmodel_update_freq == 0:
             mylog.info(f"<---pre_i:{pre_i}> <var> 更新var模型")
@@ -266,9 +257,12 @@ def var_forcast(
         pre_xs_df = pd.DataFrame(pre_xs, columns=train_xs_df_copy.columns)
 
         # 保存差分预测值
-        pres_xs_df = pd.concat(
-            [pres_xs_df, pre_xs_df], axis=0, ignore_index=True
-        )
+        if pres_xs_df is None:
+            pres_xs_df = copy.deepcopy(pre_xs_df)
+        else:
+            pres_xs_df = pd.concat(
+                [pres_xs_df, pre_xs_df], axis=0, ignore_index=True
+            )
         # mylog.info(f'pre_xs_df:\n{pre_xs_df}')
 
         # 更新历史数据（符合prod_env: 将预测值追加到历史数据中）
@@ -293,25 +287,28 @@ def var_forcast(
                 before_diff_raw_df=price_diff_middle.iloc[:, [-(d + 2)]],
                 diff_pre_df=inverse_preprice_df,
             )
+    # mylog.info(f'逆标准化前的inverse_preprice_df:\n{inverse_preprice_df}')
 
-        # mylog.info(f'inverse_preprice_df:\n{inverse_preprice_df}')
-    # inverse_preprice_df.columns = ['price_pre']
+    # 逆标准化得到原尺度下的预测值
+    inverse_preprice_df.iloc[:, 0] = (
+        scaler_dict[price_name]
+        .inverse_transform(inverse_preprice_df.copy())
+        .flatten()
+    )
 
     return inverse_preprice_df
 
 
 if __name__ == "__main__":
-    origin_df = pd.read_csv(
-        r"../data/02六品种数据整理-月_test.csv",
-        usecols=["date", "热轧板卷价格", "挖掘机销量", "家用空调"],
-        index_col=["date"],
-    )
-    origin_df.index = pd.to_datetime(origin_df.index)
-    xs_df = origin_df.iloc[:-5]
-    test_df = origin_df.iloc[-5:]
-    print(xs_df)
-    print(test_df)
-
-    # 测试
-    pre_steps = len(test_df)
-    var_forcast(train_xs_df=xs_df, roll_steps=pre_steps)
+    pass
+    # origin_df = pd.read_csv(r'../data/02六品种数据整理-月_test.csv',
+    #                         usecols=['date', '热轧板卷价格', '挖掘机销量', '家用空调'], index_col=['date'])
+    # origin_df.index = pd.to_datetime(origin_df.index)
+    # xs_df = origin_df.iloc[:-5]
+    # test_df = origin_df.iloc[-5:]
+    # print(xs_df)
+    # print(test_df)
+    #
+    # # 测试
+    # pre_steps = len(test_df)
+    # var_forcast(train_xs_df=xs_df, roll_steps=pre_steps)

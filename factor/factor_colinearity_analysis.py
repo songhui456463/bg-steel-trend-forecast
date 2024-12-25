@@ -2,12 +2,17 @@
 多协从因子共线性：去除多共线性的因子，筛选出有代表性的因子
 """
 
+import copy
 import pandas as pd
-from sklearn.cluster import SpectralClustering
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
 from sklearn.preprocessing import StandardScaler
+from scipy.cluster.hierarchy import linkage, fcluster
+from sklearn.cluster import SpectralClustering
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 from utils.log import mylog
+from factor.factor_config import FactorConfig
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", None)
@@ -71,6 +76,7 @@ def factor_colinearity_filter(
         # mylog.info(f'cur_clu_xs_df:\n{cur_clu_xs_df}')
 
         # 计算各因子的vif 并筛选因子
+        """法一：简单排除"""
         cur_clu_xs_num = cur_clu_xs_df.shape[1]
         for col_i in range(cur_clu_xs_num):
             vif = variance_inflation_factor(cur_clu_xs_df.values, col_i)
@@ -78,6 +84,71 @@ def factor_colinearity_filter(
                 vif_res_df["factor_name"] == cur_clu_factor[col_i], "clu_vif"
             ] = vif
         vif_res_df.loc[vif_res_df["clu_vif"] <= vif_thred, "reserved"] = True
+
+        """法二：迭代排除"""
+        # cur_clu_xs_df_copy = copy.deepcopy(cur_clu_xs_df)
+        # condition_clu = vif_res_df["clu"] == clu
+        # cycle_i = 1
+        # while True:
+        #     # print(f'--------- cucly_i={cycle_i} ---------')
+        #
+        #     # 计算当前组的因子vif并保存
+        #     cur_clu_xs_df_copy_num = cur_clu_xs_df_copy.shape[1]
+        #     for col_i in range(cur_clu_xs_df_copy_num):
+        #         vif = variance_inflation_factor(cur_clu_xs_df_copy.values, col_i)
+        #         vif_res_df.loc[
+        #             vif_res_df["factor_name"]
+        #             == cur_clu_xs_df_copy.columns[col_i],
+        #             f"clu_vif_{cycle_i}",
+        #         ] = vif
+        #     # mylog.info(f'vif_res_df:\n{vif_res_df}')
+        #
+        #     # 保留vif值小的因子，进入下一轮
+        #     reserved_factor = vif_res_df.loc[
+        #         condition_clu
+        #         & (vif_res_df[f"clu_vif_{cycle_i}"] <= vif_thred),
+        #         ["factor_name"],
+        #     ].values.flatten()
+        #     # mylog.info(f'reserved_factor:\n{reserved_factor}')  # 当只有两个因子时，vif值相同，但仍有大于10和小于10之分
+        #
+        #     # 停止条件
+        #     if cur_clu_xs_df_copy_num == len(reserved_factor):  # 所有因子的最新vif值都小于thred
+        #         vif_res_df.loc[
+        #             vif_res_df["factor_name"].isin(reserved_factor.tolist()),
+        #             "reserved",
+        #         ] = True
+        #         break
+        #
+        #     if (len(reserved_factor) == 1  # 不需要再对只有一个因子的xs_df_copy求vif
+        #         or cycle_i >= vif_max_cycle):  # 设置迭代求vif的最大迭代次数
+        #         vif_res_df.loc[
+        #             vif_res_df["factor_name"].isin(reserved_factor.tolist()),
+        #             "reserved",
+        #         ] = True
+        #         break
+        #
+        #     if len(reserved_factor) == 0:  # 所有因子的最新vif都大于thred：可能是两个因子(相同的vif)，可能是3个及以上因子
+        #         max_vif_factor = vif_res_df.at[vif_res_df[f"clu_vif_{cycle_i}"].idxmax(), "factor_name"]
+        #         # mylog.info(f'max_vif_factor:\n{max_vif_factor}')
+        #         reserved_factor = cur_clu_xs_df_copy.columns.tolist()
+        #         reserved_factor.remove(max_vif_factor)  # 排除掉vif值最大的因子
+        #         # mylog.info(f'reserved_factor:\n{reserved_factor}')
+        #         # 停止
+        #         if len(reserved_factor) == 0:  # 没有剩余的小于thred的因子，直接结束
+        #             break
+        #         if len(reserved_factor) == 1:  # 不能对1个因子计算vif
+        #             vif_res_df.loc[vif_res_df["factor_name"].isin(reserved_factor), "reserved"] = True
+        #             break
+        #         # 更新
+        #         cur_clu_xs_df_copy = cur_clu_xs_df_copy.loc[:, reserved_factor]
+        #         # mylog.info(f'cur_clu_xs_df_copy.columns:\n{cur_clu_xs_df_copy.columns}')
+        #         cycle_i += 1
+        #         continue
+        #
+        #     # 更新
+        #     cur_clu_xs_df_copy = cur_clu_xs_df_copy.loc[:, reserved_factor]
+        #     # mylog.info(f'cur_clu_xs_df_copy.columns:\n{cur_clu_xs_df_copy.columns}')
+        #     cycle_i += 1
 
         mylog.info(f"vif_res_df:\n{vif_res_df}")
 

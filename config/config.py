@@ -2,11 +2,19 @@
 总config
 """
 
-import datetime
 import os
+import datetime
 from pathlib import Path
-
 from pydantic_settings import BaseSettings
+import sys
+import matplotlib.pyplot as plt
+
+# 设置plt全局
+if sys.platform == "win32":
+    plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
+else:
+    plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # Arial Unicode MS
+plt.rcParams["axes.unicode_minus"] = False  # 处理负号
 
 
 class Settings(BaseSettings):

@@ -4,11 +4,14 @@
     2、筛选出与标的序列的相关性显著的因子
 """
 
-import numpy as np
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 import statsmodels.api as sm
 
 from utils.log import mylog
+from preprocess.pre_enums import EnumPretestingReturn
+
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", None)
@@ -169,7 +172,7 @@ def factor_cal_correlation(y_df: pd.DataFrame, x_df: pd.DataFrame) -> dict:
     from preprocess.pretesting import autocorr_test
 
     is_resid_corr = autocorr_test(pd.DataFrame(model_intercept.resid)).get(
-        "is_corr"
+        EnumPretestingReturn.autocorrTest_is_corr
     )
     if is_resid_corr:
         # mylog.warning(f'<{y_name}>--<{x_name}> simple_linear regression 残差存在自相关性，理论上建模无效')
@@ -232,7 +235,6 @@ if __name__ == "__main__":
     # print(y_df)
     # print(xs_df)
 
-    # 哐哐测试
     # 检查的最大提前期设置为6个月
     #
     # result_df = calculate_max_abs_cov_for_factors(

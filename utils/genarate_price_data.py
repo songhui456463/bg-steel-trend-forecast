@@ -2,15 +2,14 @@
 从日频数据中生成周频和月频数据，备用
 """
 
-import os
-from typing import List, Dict
-
 import pandas as pd
+from typing import List, Dict
+import os
 
-from factor.factor_resampling import auto_resampling
-from utils.data_read import read_x_by_map
-from utils.enum_family import EnumFreq
 from utils.log import mylog
+from utils.enum_family import EnumFreq
+from utils.data_read import read_x_by_map
+from factor.factor_resampling import auto_resampling, check_freq
 
 
 def extract_week_from_day(price_day_df):
@@ -91,25 +90,25 @@ def multi_extract_from_day(
         # 保存table
         file_path = r"..\data\市场数据"
         file_path = os.path.join(file_path, file_name_dict.get(freq))
-        # table.to_csv(file_path, index=True, encoding='utf-8-sig')
-        # mylog.info(f'{freq.value} table 写入完毕！')
+        table.to_csv(file_path, index=True, encoding="utf-8-sig")
+        mylog.info(f"{freq.value} table 写入完毕！")
 
 
 if __name__ == "__main__":
     to_extract_name = [
         # 【冷轧】
-        "国际冷轧板卷汇总价格：美国钢厂（中西部）（日）",
-        "国际冷轧板卷汇总价格：美国进口（CFR）（日）",
-        "国际冷轧板卷汇总价格：欧盟钢厂（日）",
-        "国际冷轧板卷汇总价格：欧盟进口（CFR）（日）",
-        "国际冷轧板卷汇总价格：日本市场（日）",
-        "国际冷轧板卷汇总价格：日本出口（FOB）（日）",
-        "国际冷轧板卷汇总价格：印度进口（日）",
-        "国际冷轧板卷汇总价格：中东进口（迪拜CFR）（日）",
-        "国际冷轧板卷汇总价格：独联体出口（FOB黑海）（日）",
-        "国际冷轧板卷汇总价格：南美出口（FOB）（日）",
-        "国际冷轧板卷汇总价格：中国市场（日）",
-        "国际冷轧板卷汇总价格：中国出口（FOB）（日）",
+        # '国际冷轧板卷汇总价格：美国钢厂（中西部）（日）',
+        # '国际冷轧板卷汇总价格：美国进口（CFR）（日）',
+        # '国际冷轧板卷汇总价格：欧盟钢厂（日）',
+        # '国际冷轧板卷汇总价格：欧盟进口（CFR）（日）',
+        # '国际冷轧板卷汇总价格：日本市场（日）',
+        # '国际冷轧板卷汇总价格：日本出口（FOB）（日）',
+        # '国际冷轧板卷汇总价格：印度进口（日）',
+        # '国际冷轧板卷汇总价格：中东进口（迪拜CFR）（日）',
+        # '国际冷轧板卷汇总价格：独联体出口（FOB黑海）（日）',
+        # '国际冷轧板卷汇总价格：南美出口（FOB）（日）',
+        # '国际冷轧板卷汇总价格：中国市场（日）',
+        # '国际冷轧板卷汇总价格：中国出口（FOB）（日）',
         # 【热轧】
         # '国际热轧板卷汇总价格：美国进口（CFR）（日）',
         # '国际热轧板卷汇总价格：欧盟钢厂（日）',
@@ -124,12 +123,23 @@ if __name__ == "__main__":
         # '国际热轧板卷汇总价格：南美出口（FOB）（日）',
         # '国际热轧板卷汇总价格：中国市场（日）',
         # '国际热轧板卷汇总价格：中国出口（FOB）（日）',
+        # 【各等权平均标的序列】
+        "冷轧无取向硅钢：50WW1300：0.5*1200*C：市场价：等权平均（日）",
+        "冷轧取向硅钢：30Q120：0.3*980*C：市场价：等权平均（日）",
+        "冷卷：SPCC：1*1250*C：市场价：等权平均（日）",
+        "热轧板卷：Q235B：5.75*1500*C：市场价：等权平均（日）",
+        "热轧酸洗板卷：SPHC：3*1250*C：市场价：等权平均（日）",
+        "中厚板：Q235B：20mm：价格指数：辽宁（日）",
+        "螺纹钢：HRB400E：Φ20：汇总价格：上海（日）",
+        "无取向电工钢：中低牌号：牌号等权平均：0.5*1200*C：出厂价：本钢集团（日）",
     ]
     new_file_name_dict = {
-        EnumFreq.WEEK: "Mysteel国际冷轧板卷汇总价格-周.csv",
-        EnumFreq.MONTH: "Mysteel国际冷轧板卷汇总价格-月.csv",
+        # EnumFreq.WEEK: 'Mysteel国际冷轧板卷汇总价格-周.csv',
+        # EnumFreq.MONTH: 'Mysteel国际冷轧板卷汇总价格-月.csv',
         # EnumFreq.WEEK: 'Mysteel国际热轧板卷汇总价格-周.csv',
         # EnumFreq.MONTH: 'Mysteel国际热轧板卷汇总价格-月.csv',
+        EnumFreq.WEEK: "Mysteel各标的序列等权平均-周.csv",
+        EnumFreq.MONTH: "Mysteel各标的序列等权平均-月.csv",
     }
 
     to_freq = [
@@ -140,11 +150,11 @@ if __name__ == "__main__":
         EnumFreq.WEEK: {
             "factor_name": "重交沥青：产能利用率：中国（周）",
             "start_date": None,
-        },
+        },  # 周频的base
         EnumFreq.MONTH: {
             "factor_name": "粗钢:产量:当月值",
             "start_date": "2005-10-01",
-        },
+        },  # 月频的base
     }
     multi_extract_from_day(
         to_extract_name,

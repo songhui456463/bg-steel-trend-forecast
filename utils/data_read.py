@@ -1,20 +1,21 @@
 """
-读取本地excel中的因子数据
+读取本地excel\csv中的因子数据
 """
 
-import copy
-import os
 import sys
 import traceback
-import warnings
-from typing import Union
-
+from typing import Union, Optional
+import numpy as np
 import pandas as pd
+import copy
+import os
+import warnings
 
-from factor.factor_resampling import check_freq
-from forecasting.local_data_map import factor_location_map
-from utils.enum_family import EnumFreq
 from utils.log import mylog
+from factor.factor_resampling import check_freq
+from utils.enum_family import EnumFreq
+from forecasting.local_data_map import factor_location_map, price_location_map
+
 
 # 全局忽略 UserWarning
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -70,81 +71,6 @@ def harmonize_weekfreq_date(
             f"target must be pd.Timestamp or DataFrame(with pd.DatetimeIndex)"
         )
     return target
-
-
-def get_factor_path_from_folder(folder_path):
-    """
-    获取folder_path目录下的所有xlsx或xls结尾的文件中的指标名称（因子名称）
-    :param folder_path:
-    :return: {'factor_name':{'path': .. , 'col_idx': ..}}
-    """
-    # 遍历文件夹中的所有文件
-    map_dict = {}
-    for filename in os.listdir(folder_path):
-        if (
-            filename.endswith(".xlsx")
-            or filename.endswith(".xls")
-            or filename.endswith(".csv")
-        ):
-            file_path = os.path.join(folder_path, filename)
-            file_path = rf"{file_path}"
-            mylog.info(f"========= file_path: {file_path}")
-            if filename.endswith(".xlsx") or filename.endswith(".xls"):
-                data = pd.read_excel(file_path).dropna(how="all")
-            else:
-                data = pd.read_csv(file_path).dropna(how="all")
-
-            # 找到‘指标名称’这一行的行索引，取出这一行
-            index_of_target_value = data.index[
-                data.iloc[:, 0] == "指标名称"
-            ].tolist()  # 找到第0列中值为 '指标名称' 的行索引
-            factor_name_df = copy.deepcopy(data.iloc[index_of_target_value, :])
-
-            if factor_name_df.empty:  # 针对自生成的csv等
-                factor_name_df = pd.concat(
-                    [
-                        factor_name_df,
-                        pd.DataFrame(
-                            [factor_name_df.columns],
-                            columns=factor_name_df.columns,
-                        ),
-                    ],
-                    axis=0,
-                )
-
-            # 找到包含'指标名称'的列
-            columns_to_ignore = [
-                col for col in data.columns if (data[col] == "指标名称").any()
-            ]
-            factor_name_df.dropna(axis=1, how="all", inplace=True)
-
-            # 逐列找到对应列的相关info
-            for col_idx in range(factor_name_df.shape[1]):
-                if factor_name_df.columns[col_idx] in columns_to_ignore:
-                    continue
-                factor_name = factor_name_df.iloc[0, col_idx]
-
-                col_df = data.iloc[:, [0, col_idx]]
-                col_df.iloc[:, 0] = pd.to_datetime(
-                    col_df.iloc[:, 0], errors="coerce", format=None
-                )  # 注意：只能用下表索引 iloc
-                col_df = col_df.loc[col_df.iloc[:, 0].notna()].dropna(
-                    how="any"
-                )  # 去除该银子的空值（主要是针对首尾空值）
-
-                map_dict[factor_name] = {
-                    "path": file_path,
-                    "col_idx": col_idx,
-                    "first_date": col_df.iloc[0, 0].strftime("%Y/%m/%d"),
-                    "end_date": col_df.iloc[-1, 0].strftime("%Y/%m/%d"),
-                }
-                mylog.info(
-                    f"col_idx:{col_idx}, factor_name:{factor_name}, first_date: {col_df.iloc[0, 0]}, end_date: {col_df.iloc[-1, 0]}"
-                )
-
-    mylog.info(f"=============================")
-    mylog.info(f"map_dict:\n{map_dict}")
-    return map_dict
 
 
 def read_x_from_local(
@@ -230,8 +156,13 @@ def read_x_by_map(
     :param end_date:
     :return: x_df index为datetime日期，仅有一列数据
     """
+    if factor_name in list(price_location_map.keys()):
+        location_map = price_location_map
+    else:
+        location_map = factor_location_map
+
     # 查询当前的factor_location_map
-    cur_factor_location_dict = factor_location_map.get(factor_name, None)
+    cur_factor_location_dict = location_map.get(factor_name, None)
     if cur_factor_location_dict is not None:
         file_path = cur_factor_location_dict.get("path", None)
         if sys.platform != "win32":
@@ -266,8 +197,6 @@ def read_x_by_map(
 
 if __name__ == "__main__":
     pass
-    folder_path = r"..\data\市场数据"
-    map_dict = get_factor_path_from_folder(folder_path)
 
     # factor_name = '国际热轧板卷汇总价格：中国市场（日）'
     # factor_name = '销量:液压挖掘机:主要企业:出口(外销):当月值'

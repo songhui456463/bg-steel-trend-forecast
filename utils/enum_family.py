@@ -2,7 +2,7 @@
 公共枚举类们
 """
 
-from enum import Enum
+from enum import Enum, IntEnum
 
 
 class EnumVariety(Enum):
@@ -44,14 +44,28 @@ class EnumForecastMethod(Enum):
         "lstm_single",
         EnumForecastMethodType.SINGLE,
     )  # 使用单因子预测价格序列
+    LSTM_SINGLE_PATTERN_ONE = (
+        "lstm_single_pattern_one",
+        EnumForecastMethodType.SINGLE,
+    )  # 使用单因子预测价格序列
+    TRANSFORMER_SINGLE = ("transformer_single", EnumForecastMethodType.SINGLE)
+    GARCH = ("garch", EnumForecastMethodType.SINGLE)
 
     """多因子"""
     LSTM_MULTIPLE = (
         "lstm_multiple",
         EnumForecastMethodType.MULTI,
     )  # 使用多因子预测价格序列
+    LSTM_MULTIPLE_PATTERN_ONE = (
+        "lstm_multiple_pattern_one",
+        EnumForecastMethodType.MULTI,
+    )  # 使用多因子预测价格序列
     VAR = ("var", EnumForecastMethodType.MULTI)
-
+    TRANSFORMER = ("transformer", EnumForecastMethodType.MULTI)
+    TRANSFORMER_MULTIPLE = (
+        "transformer_multiple",
+        EnumForecastMethodType.MULTI,
+    )
     """简单拟合"""
     NORMAL_FIT = ("normalfit", EnumForecastMethodType.SIMPLE_FIT)
     T_FIT = ("t_fit", EnumForecastMethodType.SIMPLE_FIT)

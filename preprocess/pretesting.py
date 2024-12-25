@@ -17,7 +17,6 @@ from statsmodels.stats.diagnostic import het_arch
 
 from preprocess.pre_enums import EnumPretestingReturn
 from utils.enum_family import EnumForecastMethod
-from utils.log import mylog
 
 
 def autocorr_test(df: pd.DataFrame):
@@ -50,7 +49,8 @@ def autocorr_test(df: pd.DataFrame):
     #            f'is_corr:{is_corr}\n'
     #            f'best_corrlag: {best_corrlag}\n'
     #            f'==========================================================')
-    res_dict = {"is_corr": is_corr}
+
+    res_dict = {EnumPretestingReturn.autocorrTest_is_corr: is_corr}
     return res_dict
     # return is_corr, best_corrlag
 
@@ -84,9 +84,9 @@ def gaussian_test(df: pd.DataFrame) -> dict:
     # Excess Kurtosis = Kurtosis−3
 
     res_dict = {
-        "is_gaussian": is_gaussian,
-        "skew": data_skew,
-        "kurtosis": data_kurtosis,
+        EnumPretestingReturn.gaussianTest_is_gaussian: is_gaussian,
+        EnumPretestingReturn.gaussianTest_skew: data_skew,
+        EnumPretestingReturn.gaussianTest_kurtosis: data_kurtosis,
     }
     return res_dict
 
@@ -103,12 +103,17 @@ def whitenoise_test(df):
     is_autocorr = autocorr_test(df)
     # 正态性
     gaussian_res = gaussian_test(df)
-    is_gaussian = gaussian_res["is_gaussian"]
+    is_gaussian = gaussian_res.get(
+        EnumPretestingReturn.gaussianTest_is_gaussian
+    )
     # 偏峰度t分布
 
     if not is_autocorr and is_gaussian:  # e.g.检验残差
         is_whitenoise = True
-    res_dict = {"is_whitenoise": is_whitenoise}
+
+    res_dict = {
+        EnumPretestingReturn.whitenoiseTest_is_whitenoise: is_whitenoise
+    }
     return res_dict
 
 
@@ -122,7 +127,7 @@ def stationary_test(df):
 
     copy_df = copy.deepcopy(df)
     is_stationary = None  # 原始序列是否平稳
-    stationary_d = None  # 平稳阶数
+    stationary_d = 0  # 平稳阶数即需要差分的阶数
     d_pvalue = {}  # 存放差分阶数和对应的pvalue
     for d in range(3):
         # mylog.info(f'------- diff order = {d} -------')
@@ -143,7 +148,7 @@ def stationary_test(df):
         else:  # 平稳 p<0.05
             if d == 0:
                 is_stationary = True
-            stationary_d = d
+            stationary_d = d  # 需要差分d阶 才至平稳
             break
         copy_df = copy_df.diff(1).dropna()
     # 注意：如果到这里stationary_d仍为None，说明该序列差分3次都没有平稳，可能是“累计”型序列，次年首月和当年最后一月的差分值相对于其他差分值是异常的。
@@ -158,7 +163,10 @@ def stationary_test(df):
     #     f"=========================================================="
     # )
 
-    res_dict = {"is_stationary": is_stationary, "stationary_d": stationary_d}
+    res_dict = {
+        EnumPretestingReturn.stationaryTest_is_stationary: is_stationary,
+        EnumPretestingReturn.stationaryTest_stationary_d: stationary_d,
+    }
     # return is_stationary, stationary_d
     return res_dict
 
@@ -181,18 +189,30 @@ def hetero_test(df):
     if lm_pvalue < 0.05:
         is_het = True
 
-    mylog.info(
-        f"Hetero-Test Result\n"
-        f"==========================================================\n"
-        f"LM-Statis value: {lm_statis}\n"
-        f"LM_Pvalue: {lm_pvalue}\n"
-        f"F_statis:{f_statis}\n"
-        f"F_pvalue:{f_pvalue}\n"
-        f"is_het:{is_het}\n"
-        f"=========================================================="
-    )
-    res_dict = {"is_het": is_het}
+    # mylog.info(
+    #     f"Hetero-Test Result\n"
+    #     f"==========================================================\n"
+    #     f"LM-Statis value: {lm_statis}\n"
+    #     f"LM_Pvalue: {lm_pvalue}\n"
+    #     f"F_statis:{f_statis}\n"
+    #     f"F_pvalue:{f_pvalue}\n"
+    #     f"is_het:{is_het}\n"
+    #     f"=========================================================="
+    # )
+
+    res_dict = {
+        EnumPretestingReturn.hetetoTest_is_het: is_het,
+    }
     return res_dict
+
+
+# def season_test(df):
+#     """
+#     检验序列中是否含有季节成分，若含有，可以用SARIMA\ETS等模型
+#     :param df:
+#     :return:
+#     """
+#     pass
 
 
 def run_pretesting(df: pd.DataFrame):
@@ -203,14 +223,16 @@ def run_pretesting(df: pd.DataFrame):
     """
     forecastmethod_list = []
     # 1 检验自相关性
-    is_autocorr = autocorr_test(df)
+    is_autocorr = autocorr_test(df).get(
+        EnumPretestingReturn.autocorrTest_is_corr
+    )
     if not is_autocorr:
         # 2.1 若原始序列无自相关性，无需使用预测方法
-        is_het = hetero_test(df)
+        is_het = hetero_test(df).get(EnumPretestingReturn.hetetoTest_is_het)
         # 若序列的方差值是常数，则检测是否为正态分布，否则用t分布拟合
         if not is_het:
             is_normal = gaussian_test(df).get(
-                EnumPretestingReturn.gaussianTest_is_gaussian.value
+                EnumPretestingReturn.gaussianTest_is_gaussian
             )
             if is_normal:
                 forecastmethod_list.append(EnumForecastMethod.NORMAL_FIT)
@@ -223,16 +245,17 @@ def run_pretesting(df: pd.DataFrame):
         # is_stationary, stationary_d = stationary_test(df)
         res_stationary = stationary_test(df)
         if res_stationary.get(
-            EnumPretestingReturn.stationaryTest_is_stationary.value
+            EnumPretestingReturn.stationaryTest_is_stationary
         ):
             # 直接对平稳序列进行预测
             forecastmethod_list.extend(
                 [
-                    EnumForecastMethod.ARIMA,  # 需要平稳行条件，但预测方法模块会再进行平稳化
+                    EnumForecastMethod.ARIMA,  # 需要平稳性条件，但预测方法模块会再进行平稳化
                     EnumForecastMethod.HOLTWINTERS,  # 不要求序列平稳
-                    EnumForecastMethod.FBPROPHET,  # 需要平稳行条件，但...
-                    EnumForecastMethod.LSTM_SINGLE,  # 需要平稳行条件，但...
-                    EnumForecastMethod.VAR,  # 需要平稳行条件，但...
+                    EnumForecastMethod.FBPROPHET,  # 需要平稳性条件，但...
+                    EnumForecastMethod.LSTM_SINGLE,  # 需要平稳性条件，但...
+                    EnumForecastMethod.VAR,  # 需要平稳性条件，但...
+                    EnumForecastMethod.GARCH,
                 ]
             )
     return forecastmethod_list

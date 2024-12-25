@@ -3,6 +3,7 @@
 """
 
 import copy
+import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -29,7 +30,6 @@ def is_repairable_missing(
     :param check_end:
     :return:
     """
-    # input改为check_missing模块的最终结果
     numerical_df, miss_results = check_missing(
         origin_df, check_start, check_end, preconfig
     )
@@ -177,7 +177,10 @@ def plot_miss_repair(
     :param repaired_df:
     :return:
     """
-    plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
+    if sys.platform == "win32":
+        plt.rcParams["font.sans-serif"] = ["SimHei"]  # 黑体
+    else:
+        plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # Arial Unicode MS
     plt.rcParams["axes.unicode_minus"] = False  # 处理负号
     # 获取数据(for scatter)
 
