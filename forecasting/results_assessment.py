@@ -3,13 +3,13 @@
 """
 
 import copy
-import os
-from typing import Tuple, Dict
-
 import matplotlib.pyplot as plt
+import os
 import pandas as pd
+import sys
 from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import mean_squared_error
+from typing import Tuple, Dict
 
 from config.config import settings
 from utils.log import mylog
@@ -216,7 +216,7 @@ def forecast_res_plot(
     plt.legend()
     if is_save:
         plt.savefig(
-            os.path.join(settings.OUTPUT_DIR_PATH, "[Total] real_pre_plot.png")
+            os.path.join(settings.OUTPUT_DIR_PATH, "[Total] realpre_plot.png")
         )
     if is_show:
         plt.show()

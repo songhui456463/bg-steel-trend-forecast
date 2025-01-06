@@ -4,10 +4,10 @@
 """
 
 import copy
-from typing import Optional, Union
-
+import numpy as np
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
+from typing import Optional, Union
 
 from check_missing import check_missing
 from check_outlier import check_outliers
@@ -19,7 +19,7 @@ from pretesting import (
     stationary_test,
     hetero_test,
 )
-from repair_missing import repair_missing
+from repair_missing import is_repairable_missing, repair_missing
 from repair_outlier import repair_outliers
 from utils.log import mylog
 

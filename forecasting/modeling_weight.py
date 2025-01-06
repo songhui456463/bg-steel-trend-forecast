@@ -4,6 +4,7 @@
 
 import numpy as np
 import pandas as pd
+import traceback
 from gurobipy import Model, quicksum, GRB
 from scipy.optimize import minimize
 

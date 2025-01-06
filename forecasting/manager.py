@@ -3,24 +3,26 @@
 """
 
 import copy
-from typing import Optional, Dict
-
 import pandas as pd
+from typing import Optional, Dict
 
 from factor.factor_config import FACTORCONFIG, FactorConfig
 from factor.factor_enums import Enum_allfactor_lt_corr_res_DF
 from factor.factor_manager import multifactor_align_index, multifactor_ayalysis
-from factor.factor_resampling import check_freq
+from factor.factor_resampling import check_freq, auto_resampling
 from forecasting.forecast_config import FORECASTCONFIG, ForecastConfig
 from forecasting.forecast_manager import roll_forecast
 from forecasting.forecast_trend import (
     cal_trend_by_value,
+    trend_demo,
+    cal_trend_by_weighted_value,
 )
 from forecasting.results_assessment import (
     forecast_res_plot,
     forecast_evaluation,
     res_plot_oneroll_trend,
 )
+from preprocess.pretesting import run_pretesting
 from utils.data_read import read_x_by_map
 from utils.enum_family import EnumFreq, EnumForecastMethod
 from utils.log import mylog
@@ -187,14 +189,18 @@ def run(
         # EnumForecastMethod.ARIMA,
         # EnumForecastMethod.HOLTWINTERS,
         # EnumForecastMethod.FBPROPHET,
-        EnumForecastMethod.LSTM_SINGLE,
+        # EnumForecastMethod.LSTM_SINGLE,
         EnumForecastMethod.LSTM_SINGLE_PATTERN_ONE,
         # EnumForecastMethod.TRANSFORMER_SINGLE,
+        # EnumForecastMethod.GRU_SINGLE,
+        EnumForecastMethod.GRU_SINGLE_PATTERN_ONE,
         # EnumForecastMethod.GARCH,
         # EnumForecastMethod.VAR,  # 注意：若数据量不够，不能var建模
-        EnumForecastMethod.LSTM_MULTIPLE,
+        # EnumForecastMethod.LSTM_MULTIPLE,
         EnumForecastMethod.LSTM_MULTIPLE_PATTERN_ONE,
         # EnumForecastMethod.TRANSFORMER_MULTIPLE,
+        # EnumForecastMethod.GRU_MULTIPLE,
+        EnumForecastMethod.GRU_MULTIPLE_PATTERN_ONE,
     ]
 
     # 3.2 滚动预测

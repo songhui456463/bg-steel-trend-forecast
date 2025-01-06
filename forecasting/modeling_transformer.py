@@ -4,7 +4,6 @@
 """
 
 import copy
-
 import numpy as np
 import pandas as pd
 import torch
@@ -340,9 +339,9 @@ class TransformerMultiple(Transformer):
             dim_forward=256,
             dropout_rate=0.1,
             look_back=10,
-            default_epochs=10,
+            default_epochs=100,
             learning_rate=1e-4,
             batch_size=32,
-            lr_step_size=100,
+            lr_step_size=10,
             lr_gamma=0.1,
         )

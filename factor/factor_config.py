@@ -19,7 +19,7 @@ class FACTORCONFIG:
     """共线性分析"""
     N_CLUSTERS: int = 1  # 聚类簇数
     VIF_THRED: int = 10  # vif的阈值，大于该阈值认为共线性较严重
-    VIF_MAX_CYCLE: int = 10  # 循环迭代求vif的最大迭代次数
+    VIF_MAX_CYCLE: int = 50  # 循环迭代求vif的最大迭代次数
 
 
 FactorConfig = FACTORCONFIG()

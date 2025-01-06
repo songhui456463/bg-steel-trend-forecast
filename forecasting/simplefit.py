@@ -9,7 +9,10 @@ from scipy.stats import t
 
 from preprocess.pre_enums import EnumPretestingReturn
 from preprocess.pretesting import (
+    autocorr_test,
     gaussian_test,
+    stationary_test,
+    hetero_test,
 )
 from utils.log import mylog
 

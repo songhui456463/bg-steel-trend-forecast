@@ -8,12 +8,13 @@
 
 """
 
-from typing import Optional
-
+import copy
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
+from typing import Union, Optional
 
+from preprocess.pre_enums import EnumRepairMissingMethod
 from utils.enum_family import EnumFreq
 from utils.log import mylog
 
@@ -53,7 +54,7 @@ def check_freq(single_df: pd.DataFrame) -> Optional[EnumFreq]:
     elif diff_day_count_min == 1:
         freq = EnumFreq.DAY
     else:
-        mylog.error(f"数据频度判断失败")
+        mylog.error(f"<{single_df.columns[0]}> 数据频度判断失败")
         freq = None
     # mylog.info(f'<df:{single_df.columns[0]}> freq={freq.value}')
     return freq

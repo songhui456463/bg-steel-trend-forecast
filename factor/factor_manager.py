@@ -2,9 +2,13 @@
 多因子分析模块总run
 """
 
+import copy
 import numpy as np
+import os.path
 import pandas as pd
+from enum import Enum
 
+from config.config import settings
 from factor.factor_colinearity_analysis import factor_colinearity_filter
 from factor.factor_config import FactorConfig
 from factor.factor_correlation_analysis import (
@@ -143,6 +147,18 @@ def multifactor_ayalysis(
     ).sort_values(by=["p_value"])
     mylog.info(
         f"所有因子提前期及相关性显著分析结果 all_factor_lt_corr_res:\n{allfactor_lt_corr_res}"
+    )
+    os.makedirs(
+        os.path.join(settings.OUTPUT_DIR_PATH, r"factor_analysis"),
+        exist_ok=True,
+    )
+    allfactor_lt_corr_res.to_csv(
+        os.path.join(
+            settings.OUTPUT_DIR_PATH,
+            r"factor_analysis\all_factor_lt_corr_res.csv",
+        ),
+        index=True,
+        encoding="utf-8-sig",
     )
 
     # poc 场景4展示

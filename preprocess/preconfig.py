@@ -3,6 +3,8 @@ predata config
 pretest config
 """
 
+from enum import Enum
+
 from pre_enums import EnumRepairMissingMethod
 
 

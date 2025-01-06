@@ -15,17 +15,18 @@
 │   └── factor_resampling.py                            # 重采样模块
 ├── forecasting                                         # 预测模块
 │   ├── forecast_config.py                              # 预测参数配置文件
-│   ├── forecast_manager.py                             # 单次价格预测模块
-│   ├── forecast_trend.py                               # 滚动周期预测模块
+│   ├── forecast_manager.py                             # 单次价格预测
+│   ├── forecast_trend.py                               # 周期预测模块
 │   ├── local_data_map.py                               # 本地文件夹文件路径映射
 │   ├── manager.py                                      # 预测程序调用主入口文件
 │   ├── modeling_arima.py                               # arima模型
 │   ├── modeling_fbprophet.py                           # fbprophet模型
+│   ├── modeling_garch.py                               # garch模型
 │   ├── modeling_holtwinters.py                         # holtwinters模型
 │   ├── modeling_lstm.py                                # lstm模型
 │   ├── modeling_var.py                                 # var模型
 │   ├── modeling_weight.py                              # 加权模型
-│   ├── results_assessment.py                           # 结果评估模块
+│   ├── results_assessment.py                           # 结果评估
 │   └── simplefit.py                                    # 基础模型
 ├── logs                                                # 日志存储目录
 ├── outputs                                             # 结果输出目录

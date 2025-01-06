@@ -49,6 +49,11 @@ class EnumForecastMethod(Enum):
         EnumForecastMethodType.SINGLE,
     )  # 使用单因子预测价格序列
     TRANSFORMER_SINGLE = ("transformer_single", EnumForecastMethodType.SINGLE)
+    GRU_SINGLE = ("gru_single", EnumForecastMethodType.SINGLE)
+    GRU_SINGLE_PATTERN_ONE = (
+        "gru_single_pattern_one",
+        EnumForecastMethodType.SINGLE,
+    )
     GARCH = ("garch", EnumForecastMethodType.SINGLE)
 
     """多因子"""
@@ -64,6 +69,11 @@ class EnumForecastMethod(Enum):
     TRANSFORMER = ("transformer", EnumForecastMethodType.MULTI)
     TRANSFORMER_MULTIPLE = (
         "transformer_multiple",
+        EnumForecastMethodType.MULTI,
+    )
+    GRU_MULTIPLE = ("gru_multiple", EnumForecastMethodType.MULTI)
+    GRU_MULTIPLE_PATTERN_ONE = (
+        "gru_multiple_pattern_one",
         EnumForecastMethodType.MULTI,
     )
     """简单拟合"""

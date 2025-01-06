@@ -4,14 +4,13 @@
     2、筛选出与标的序列的相关性显著的因子
 """
 
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import statsmodels.api as sm
 
-from utils.log import mylog
 from preprocess.pre_enums import EnumPretestingReturn
-
+from utils.log import mylog
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", None)
@@ -216,8 +215,15 @@ def factor_correlation_filter(y_df: pd.DataFrame, xs_df: pd.DataFrame):
     # mylog.info(f"allfactor_corr_res:\n{allfactor_corr_res}")
 
     # 3 对corr_res，按照相关性是否显著进行筛选，--> 显著corr_factor们的序列
-    filted_xs_name = allfactor_corr_res.loc[
-        allfactor_corr_res["is_significant_corr"], "x_name"
+    # filted_xs_name = allfactor_corr_res.loc[allfactor_corr_res["is_significant_corr"], "x_name"].values
+    # 根据corr强度先做一次筛选
+    filed_corr_res = allfactor_corr_res.loc[
+        (allfactor_corr_res["corr"] >= 0.5)
+        | (allfactor_corr_res["corr"] <= -0.5)
+    ]
+    # 再根据是否显著做一次筛选
+    filted_xs_name = filed_corr_res.loc[
+        filed_corr_res["is_significant_corr"], "x_name"
     ].values
     filted_xs_df = xs_df[filted_xs_name]  # 相关性显著的因子的序列
     # mylog.info(f"<{y_df.columns[0]}> 相关性显著的因子：\n {filted_xs_df}")

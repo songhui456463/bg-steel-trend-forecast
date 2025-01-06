@@ -3,13 +3,13 @@
 """
 
 import copy
-import os
-from typing import List
-
 import numpy as np
+import os
 import pandas as pd
 import torch
+import traceback
 from pandas.api.types import is_datetime64_any_dtype
+from typing import List
 
 from config.config import settings
 from factor.factor_resampling import check_freq
@@ -24,9 +24,14 @@ from modeling_arima import arima_model
 from modeling_fbprophet import (
     prophet_model,
     create_future_dataframe,
+    update_index_with_future_ds,
+    prophet_model_cv,
 )
 from modeling_garch import GarchInput, arch_forecasting
+from modeling_gru import GRUSingle, GRUMultiple
 from modeling_holtwinters import (
+    holtwinters_model_by_gridsearch,
+    holtwinters_model_apply,
     holtwinters_model_by_cv,
 )
 from modeling_lstm import LSTMSingle, LSTMMultiple, EnumForecastPattern
@@ -37,19 +42,24 @@ from modeling_weight import (
     weight_optimization_scipy,
     weight_forcast,
 )
-from results_assessment import forecast_res_plot
+from results_assessment import forecast_res_plot, forecast_evaluation
 from utils.enum_family import (
     EnumForecastMethod,
     EnumForecastMethodType,
     EnumFreq,
 )
 from utils.log import mylog
+from utils.save_model import get_gru_model_path
 from utils.save_model import get_lstm_model_path
 
 # 设置显示的最大行数
 pd.set_option("display.max_rows", 60)  # 设置为 10 行
 # 设置显示的最大列数
 pd.set_option("display.max_columns", 20)  # 设置为 10 列
+# # 设置字体为支持中文的字体，如 SimHei（黑体）
+# plt.rcParams['font.sans-serif'] = ['SimHei']
+# # 解决负号 '-' 显示为方块的问题
+# plt.rcParams['axes.unicode_minus'] = False
 
 
 def single_factor_forecast(
@@ -350,6 +360,58 @@ def single_factor_forecast(
             )
             real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
 
+        elif method == EnumForecastMethod.GRU_SINGLE:  # 默认多步预测
+            preroll_history_df = copy.deepcopy(history_df)
+            grusingle = GRUSingle(
+                pattern=EnumForecastPattern.TWO.value, pre_steps=pre_steps
+            )
+            cur_gru_model_path = get_gru_model_path(
+                price_history_df=preroll_history_df, model_object=grusingle
+            )
+
+            if os.path.exists(cur_gru_model_path):
+                mylog.info(f"加载历史训练模型：{cur_gru_model_path}")
+                gru_single_model = torch.load(
+                    f=cur_gru_model_path, weights_only=False
+                )  # 显式指定weights_only参数，防止pickle兼容性
+            else:
+                mylog.info(f"训练gru_single_model，并保存")
+                gru_single_model = grusingle.modeling(
+                    train_df=preroll_history_df
+                )
+                torch.save(obj=gru_single_model, f=cur_gru_model_path)
+
+            pres_list = grusingle.forecast(
+                preroll_history_df, gru_single_model, pre_steps=pre_steps
+            )
+            real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
+
+        elif method == EnumForecastMethod.GRU_SINGLE_PATTERN_ONE:
+            preroll_history_df = copy.deepcopy(history_df)
+            grusingle1 = GRUSingle(
+                pattern=EnumForecastPattern.ONE.value, pre_steps=pre_steps
+            )
+            cur_gru_model_path = get_gru_model_path(
+                price_history_df=preroll_history_df, model_object=grusingle1
+            )
+
+            if os.path.exists(cur_gru_model_path):
+                mylog.info(f"加载历史训练模型：{cur_gru_model_path}")
+                gru_single_model = torch.load(
+                    f=cur_gru_model_path, weights_only=False
+                )  # 显式指定weights_only参数，防止pickle兼容性
+            else:
+                mylog.info(f"训练gru_single_pattern_one_model，并保存")
+                gru_single_model = grusingle1.modeling(
+                    train_df=preroll_history_df
+                )
+                torch.save(obj=gru_single_model, f=cur_gru_model_path)
+
+            pres_list = grusingle1.forecast(
+                preroll_history_df, gru_single_model, pre_steps=pre_steps
+            )
+            real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
+
         elif method == EnumForecastMethod.GARCH:
             preroll_history_df = copy.deepcopy(history_df)
 
@@ -461,7 +523,7 @@ def multi_factor_forecast(
                 factor_num=train_xs_df.shape[1]
             )
             # 训练
-            mylog.info(f"训练transformer_multiple_mdoel，并保存")
+            mylog.info(f"训练transformer_multiple_model，并保存")
             transformer_multi_model = transformermultiple.modeling(
                 train_df=train_xs_df
             )
@@ -469,6 +531,57 @@ def multi_factor_forecast(
             # 预测
             pres_list = transformermultiple.forecast(
                 train_xs_df, transformer_multi_model, pre_steps=pre_steps
+            )
+            real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
+
+        elif method == EnumForecastMethod.GRU_MULTIPLE:
+            # 默认 pattern2
+            grumultiple = GRUMultiple(
+                pattern=EnumForecastPattern.TWO.value,
+                factor_num=train_xs_df.shape[1],
+                pre_steps=pre_steps,
+            )
+            # 训练
+            cur_gru_model_path = get_gru_model_path(
+                price_history_df=train_xs_df, model_object=grumultiple
+            )
+            if os.path.exists(cur_gru_model_path):
+                mylog.info(f"加载历史训练模型：{cur_gru_model_path}")
+                gru_multi_model = torch.load(
+                    f=cur_gru_model_path, weights_only=False
+                )  # 显式指定weights_only参数，防止pickle兼容性
+            else:
+                mylog.info(f"训练gru_multiple_model，并保存")
+                gru_multi_model = grumultiple.modeling(train_df=train_xs_df)
+                torch.save(obj=gru_multi_model, f=cur_gru_model_path)
+            # 预测
+            pres_list = grumultiple.forecast(
+                train_xs_df, gru_multi_model, pre_steps=pre_steps
+            )
+            real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
+
+        elif method == EnumForecastMethod.GRU_MULTIPLE_PATTERN_ONE:
+            grumultiple1 = GRUMultiple(
+                pattern=EnumForecastPattern.ONE.value,
+                factor_num=train_xs_df.shape[1],
+                pre_steps=pre_steps,
+            )
+            # 训练
+            cur_gru_model_path = get_gru_model_path(
+                price_history_df=train_xs_df, model_object=grumultiple1
+            )
+            if os.path.exists(cur_gru_model_path):
+                mylog.info(f"加载历史训练模型：{cur_gru_model_path}")
+                gru_multi_model = torch.load(
+                    f=cur_gru_model_path, weights_only=False
+                )  # 显式指定weights_only参数，防止pickle兼容性
+            else:
+                mylog.info(f"训练gru_multiple_pattern_one_model，并保存")
+                gru_multi_model = grumultiple1.modeling(train_df=train_xs_df)
+                torch.save(obj=gru_multi_model, f=cur_gru_model_path)
+            # 预测
+            pres_list = grumultiple1.forecast(
+                train_xs_df, gru_multi_model, pre_steps=pre_steps
             )
             real_pre_df.loc[:, f"{method.value}_pre"] = pres_list
 
@@ -709,7 +822,7 @@ def roll_forecast(
         # 6.1
         middle_file_path = os.path.join(
             settings.OUTPUT_DIR_PATH,
-            "[Total] (rollprocess)method_realpre_df_dict.xlsx",
+            "[Total] (rollprocess)method_realpredf_dict.xlsx",
         )
         for method_name, method_realpredf in method_realpredf_dict.items():
             sheet_name = method_name
@@ -728,7 +841,7 @@ def roll_forecast(
                         writer, sheet_name=sheet_name, index=True
                     )
         mylog.info(
-            f"[Total] (rollprocess)method_realpre_df_dict.xlsx 已保存本地!"
+            f"[Total] (rollprocess)method_realpredf_dict.xlsx 已保存本地!"
         )
         # 6.2
         final_file_path = os.path.join(
@@ -821,7 +934,6 @@ def run_forecast(
     forecast_res_plot(weighted_real_pre_df, optimal_ws_dict)
     # 评估预测结果
 
-    # 测试其他求解器
     # from modeling_weight import weight_optimization_cvxpy, weight_optimization_pulp
     # optimal_ws_dict2 = weight_optimization_cvxpy(nona_real_pre_df)
     # optimal_ws_dict3 = weight_optimization_pulp(nona_real_pre_df)

@@ -10,13 +10,13 @@
 """
 
 import copy
-
 import pandas as pd
 from scipy import stats
-from statsmodels.stats.diagnostic import het_arch
+from statsmodels.stats.diagnostic import het_arch, het_breuschpagan
 
 from preprocess.pre_enums import EnumPretestingReturn
 from utils.enum_family import EnumForecastMethod
+from utils.log import mylog
 
 
 def autocorr_test(df: pd.DataFrame):

@@ -1,12 +1,11 @@
 import copy
 import itertools
-import sys
-from enum import IntEnum
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from arch import arch_model
+from enum import Enum, IntEnum
+from scipy import stats
 
 from preprocess.pre_enums import EnumPretestingReturn
 from preprocess.pretesting import (

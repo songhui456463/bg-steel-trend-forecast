@@ -3,17 +3,19 @@
 关系到是否还要用自回归相关的预测方法
 """
 
-import os
-import traceback
-from typing import List
-
 import matplotlib.pyplot as plt
+import os
+import pandas as pd
+import traceback
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from typing import List
 
 from config.config import settings
 from preprocess.pre_enums import EnumPretestingReturn
 from preprocess.pretesting import (
     autocorr_test,
+    gaussian_test,
+    whitenoise_test,
     stationary_test,
 )
 from utils.data_read import read_x_by_map
@@ -137,6 +139,7 @@ def check_targets_property(target_name_list: List[str]):
 if __name__ == "__main__":
     pass
     # 标的序列 20241212
+    from forecasting.local_data_map import price_location_map
 
     # target_name_list = list(price_location_map.keys())
 

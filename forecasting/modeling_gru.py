@@ -1,18 +1,17 @@
 """
-单因子预测模型建模：lstm_single
-多因子：lstm_multi
+单因子预测模型建模：gru_single
+多因子：gru_multi
 """
 
 import copy
-import numpy as np
 import pandas as pd
+import numpy as np
 import torch
-from enum import Enum
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from torch import nn, optim
-from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, TensorDataset
-
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from torch.optim.lr_scheduler import StepLR
+from enum import Enum
 from utils.log import mylog
 
 
@@ -27,36 +26,72 @@ def get_scaler():
 
 
 class EnumForecastPattern(Enum):
-    """lstm预测的模式"""
+    """预测的模式"""
 
-    ONE = 1
-    TWO = 2  # 预测
+    ONE = 1  # 逐步预测
+    TWO = 2  # 多步预测
 
 
-class LSTMModel(nn.Module):
-    """lstm模型"""
+def derivative_regularization(y_pred):
+    if y_pred.shape[1] < 2:
+        reg_loss = 0
+    else:
+        dy = torch.diff(y_pred, dim=1)
+        dy_clamped = torch.clamp(dy, min=-1e10, max=1e10)
+        reg_loss = torch.mean(torch.clamp(dy_clamped**2, max=1e10))
 
-    def __init__(self, input_dim, hidden_dim, layer_num, output_dim):
-        super(LSTMModel, self).__init__()
+    return reg_loss
+
+
+def custom_loss(y_pred, y_true, reg_weight=0.01):
+    # 使用 MSE 作为主要损失
+    mse_loss = nn.MSELoss()(y_pred, y_true)
+
+    # 计算导数正则化损失
+    reg_loss = derivative_regularization(y_pred)
+
+    # 总损失为 MSE 和正则化损失的线性组合
+    total_loss = mse_loss + reg_weight * reg_loss  # 可以调整正则化项的权重
+
+    return total_loss
+
+
+class GRUModel(nn.Module):
+    """gru模型"""
+
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(GRUModel, self).__init__()
         self.hidden_dim = hidden_dim
-        self.layer_num = layer_num
-        self.lstm = nn.LSTM(input_dim, hidden_dim, layer_num, batch_first=True)
+        self.gru = nn.GRU(input_dim, hidden_dim, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
 
+        # 参数初始化
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.GRU):
+                for name, param in m.named_parameters():
+                    if "weight_ih" in name:
+                        nn.init.xavier_uniform_(param.data)
+                    elif "weight_hh" in name:
+                        nn.init.orthogonal_(param.data)
+                    elif "bias" in name:
+                        nn.init.zeros_(param.data)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
     def forward(self, x):
-        h0 = torch.zeros(
-            self.layer_num, x.size(0), self.hidden_dim
-        ).requires_grad_()
-        c0 = torch.zeros(
-            self.layer_num, x.size(0), self.hidden_dim
-        ).requires_grad_()
-        out, (hn, cn) = self.lstm(x, (h0.detach(), c0.detach()))
+        h0 = torch.zeros(1, x.size(0), self.hidden_dim).requires_grad_()
+        out, _ = self.gru(x, h0.detach())
         out = self.fc(out[:, -1, :])
         return out
 
 
-class LSTM:
-    """lstm"""
+class GRU:
+    """gru"""
 
     def __init__(
         self,
@@ -64,27 +99,24 @@ class LSTM:
         pre_steps: int = 1,
         input_dim: int = 1,
         output_dim: int = 1,
-        hidden_dim: int = 100,
-        layer_num: int = 1,
+        hidden_dim: int = 50,
         look_back: int = 10,
         default_epochs: int = 150,
         learning_rate: float = 0.01,
     ):
+        # gru net参数
         self.pattern = pattern  # 预测模式。=1：滚动预测presteps期。=2：一次性预测presteps期
         self.pre_steps = pre_steps
-
-        # lstm net参数
         self.input_dim = input_dim  # input特征数：=1只有价格因子 ，=3 三个因子（包含价格因子本身）
         self.output_dim = output_dim  # output特征数，只有价格因子
         self.hidden_dim = hidden_dim
-        self.layer_num = layer_num
         self.look_back = look_back  # 每个特征的样本长度
         # train参数
         self.default_epochs = default_epochs
         self.learning_rate = learning_rate
 
         # 其他参数
-        self.batch_size = 32
+        self.batch_size = 64
         self.lr_step_size = 50
         self.lr_gamma = 0.5
 
@@ -98,6 +130,8 @@ class LSTM:
         :param look_back: 每个样本的x数据长度
         :return:
         """
+        # mylog.info(f'len__train_array: \n{len(train_array)}')
+
         # 从历史序列中划分出每个样本的x和y
         all_sample_x, all_sample_y = [], []
         samples_num = (
@@ -145,7 +179,7 @@ class LSTM:
         train_y_array: np.ndarray,
     ):
         """
-        训练lstm模型
+        训练gru模型
         :param train_x_array:
         :param train_y_array:
         :return:
@@ -159,15 +193,9 @@ class LSTM:
         tensor_train_y = torch.tensor(
             train_y_array,
             dtype=torch.float32,
-            # ).view(-1, self.pre_steps)  # pattern=2时
-        ).view(
-            -1, self.output_dim
-        )  # pattern=1 or 2
-
-        # mylog.info(f'tensor_train_x: \n{tensor_train_x}')
-        # mylog.info(f'len(tensor_train_x): \n{len(tensor_train_x)}')
-        # mylog.info(f'tensor_train_y: \n{tensor_train_y}')
-        # mylog.info(f'len(tensor_train_y): \n{len(tensor_train_y)}')
+            # ).view(-1, 1, )
+        ).view(-1, self.output_dim)
+        # ).view(-1, 1, self.output_dim)  # (batch_size, 1, output_dim=toforecast_factor_num)
 
         # 2 创建样本池和batch加载器
         train_xy_pool = TensorDataset(tensor_train_x, tensor_train_y)
@@ -175,21 +203,17 @@ class LSTM:
             train_xy_pool, batch_size=self.batch_size, shuffle=True
         )  # iterator
 
-        # 3 训练lstm
-        lstm_model = LSTMModel(
-            self.input_dim, self.hidden_dim, self.layer_num, self.output_dim
-        )  # pattern=1 or 2
-        # lstm_model = LSTMModel(self.input_dim, self.hidden_dim, self.layer_num, self.pre_steps)  # pattern=2时
-        loss_func = nn.MSELoss()  # mse 损失函数
+        # 3 训练gru
+        gru_model = GRUModel(self.input_dim, self.hidden_dim, self.output_dim)
         optimizer = optim.Adam(
-            lstm_model.parameters(), lr=self.learning_rate
+            gru_model.parameters(), lr=self.learning_rate
         )  # 优化器adam
         lr_scheduler = StepLR(
             optimizer, step_size=self.lr_step_size, gamma=self.lr_gamma
         )  # lr调度器, 每50个epoch将学习率乘以0.1
         for epoch in range(self.default_epochs):
             # 训练阶段
-            lstm_model.train()
+            gru_model.train()
             # 从样本池中加载随机batch
             loss_mean = 0
             batch_i = 0
@@ -198,10 +222,13 @@ class LSTM:
                 batch_ins, batch_y = batch_xy
                 # 前向
                 optimizer.zero_grad()
-                batch_outs = lstm_model(batch_ins)
+                batch_outs = gru_model(batch_ins)
                 # 反向和迭代更新model
-                loss = loss_func(batch_outs, batch_y)
+                loss = custom_loss(batch_outs, batch_y, reg_weight=0.01)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    gru_model.parameters(), max_norm=1.0
+                )
                 optimizer.step()
 
                 loss_mean += loss
@@ -210,24 +237,21 @@ class LSTM:
 
             if (epoch + 1) % 10 == 0:
                 mylog.info(
-                    f"<lstm training...> epoch:{epoch + 1}/{self.default_epochs}, loss:{loss_mean:.8f}"
+                    f"<gru training...> epoch:{epoch + 1}/{self.default_epochs}, loss:{loss_mean:.8f}"
                 )
 
-        return lstm_model
+        return gru_model
 
     def modeling(self, train_df: pd.DataFrame):
         """
-        构建lstm模型
+        构建gru模型
         :param train_df: 历史训练序列,单列
-        :return: 训练好的lstm模型
+        :return: 训练好的gru模型
         """
-        # 1 预处理训练数据
         train_array = train_df.values
-
-        # 各因子分别归一化 # lstm对input的尺度敏感
         scaled_train_array = copy.deepcopy(train_array)
         for factor_i in range(train_array.shape[1]):
-            scaler = get_scaler()
+            scaler = MinMaxScaler()
             scaled_train_array[:, factor_i : factor_i + 1] = (
                 scaler.fit_transform(train_array[:, factor_i : factor_i + 1])
             )
@@ -242,19 +266,19 @@ class LSTM:
         )(scaled_train_array)
 
         # 3 转换和训练数据
-        lstm_model = self.train(train_x_array, train_y_array)
+        gru_model = self.train(train_x_array, train_y_array)
 
-        return lstm_model  # lstm模型参数
+        return gru_model  # gru模型参数
 
     def forecast(
         self,
         history_df: pd.DataFrame,
-        lstm_model: LSTMModel,
+        gru_model: GRUModel,
         pre_steps: int = 1,
     ):
         """
-        基于训练好的lstm_model预测未来几步
-        :param lstm_model: 训练好的模型
+        基于训练好的gru_model预测未来几步
+        :param gru_model: 训练好的模型
         :param history_df: 用于预测的历史序列
         :param pre_steps: 预测步数
         :return:
@@ -268,8 +292,9 @@ class LSTM:
             float
         )  # 2-darray, shape=(look_back, factor_num)
         # astype(float)不能丢，否则his_deque为int，会将标准化的值强制为int
+        # mylog.info(f'his_deque: \n{his_deque}')
 
-        # 2 逐列标准化（lstm对input的尺度敏感）
+        # 2 逐列标准化（gru对input的尺度敏感）
         scaled_his_deque = copy.deepcopy(
             his_deque
         )  # 2-darray, shape=(look_back, factor_num)
@@ -289,7 +314,7 @@ class LSTM:
             1, self.look_back, self.input_dim
         )  # 1指只有一个sample_x
         predictions = []  # 存放标的序列的pre_steps步预测值
-        lstm_model.eval()  # 评估环境
+        gru_model.eval()  # 评估环境
         with torch.no_grad():
             if self.pattern == EnumForecastPattern.ONE.value:
                 # 预测模式一： 逐步预测。从第2步开始，用含预测值的sample_x 预测下一期
@@ -303,7 +328,7 @@ class LSTM:
                         scaled_input_ndarray, dtype=torch.float32
                     ).view(-1, self.look_back, self.input_dim)
                     # lstm预测
-                    scaled_tensor_out = lstm_model(
+                    scaled_tensor_out = gru_model(
                         scaled_input_tensor
                     )  # tensor shape=(1, output_dim)
                     # mylog.info(f'scaled_tensor_out: \n{scaled_tensor_out}')
@@ -334,7 +359,7 @@ class LSTM:
                     scaled_input_ndarray, dtype=torch.float32
                 ).view(-1, self.look_back, self.input_dim)
                 # lstm预测
-                scaled_tensor_out = lstm_model(
+                scaled_tensor_out = gru_model(
                     scaled_input_tensor
                 )  # tensor shape=(1, output_dim)
                 # mylog.info(f'scaled_tensor_out: \n{scaled_tensor_out}')
@@ -353,8 +378,8 @@ class LSTM:
         return predictions  # list
 
 
-class LSTMSingle(LSTM):
-    """单因子预测的lstm"""
+class GRUSingle(GRU):
+    """单因子预测的gru,无法对dy进行惩罚"""
 
     def __init__(
         self, pattern=EnumForecastPattern.TWO.value, pre_steps: int = 1
@@ -374,20 +399,18 @@ class LSTMSingle(LSTM):
         super().__init__(
             pattern=pattern,  # 预测模式
             pre_steps=pre_steps,
-            # lstm net参数
-            input_dim=1,  # input特征数：=1只有价格因子 ，=3 三个因子（包含价格因子本身）
+            # gru net参数
+            input_dim=1,
             output_dim=output_dim,
             hidden_dim=50,
-            layer_num=2,
-            look_back=15,  # 每个特征的样本长度
-            # train参数
-            default_epochs=200,
-            learning_rate=0.01,
+            look_back=10,
+            default_epochs=300,
+            learning_rate=0.001,
         )
 
 
-class LSTMMultiple(LSTM):
-    """多因子预测的lstm（也可以进行单因子）"""
+class GRUMultiple(GRU):
+    """多因子预测的gru（也可以进行单因子）"""
 
     def __init__(
         self,
@@ -410,52 +433,11 @@ class LSTMMultiple(LSTM):
         super().__init__(
             pattern=pattern,  # 预测模式
             pre_steps=pre_steps,
-            # lstm net参数
-            input_dim=factor_num,  # input特征数：=1只有价格因子 ，=3 三个因子（包含价格因子本身）
-            output_dim=output_dim,  # output特征数(pattern=1)或预测期数(pattern=2)
-            hidden_dim=100,
-            layer_num=1,
-            look_back=10,  # 每个特征的样本长度
-            # train参数
-            default_epochs=200,
-            learning_rate=0.01,
+            # gru net参数
+            input_dim=factor_num,
+            output_dim=output_dim,
+            hidden_dim=50,
+            look_back=10,
+            default_epochs=300,
+            learning_rate=0.001,
         )
-
-
-# lstm_single = LSTMSingle()
-
-
-if __name__ == "__main__":
-    pass
-    # path = r"../data/钢材new.csv"
-    # data1 = pd.read_csv(
-    #     path,
-    #     usecols=[
-    #         "日期",
-    #         "热轧板卷4.75mm(raw)",
-    #     ],
-    #     index_col=["日期"],
-    # )
-    # data1.index = pd.to_datetime(data1.index)
-    # data1.sort_index(inplace=True)
-    #
-    # # 划分train_df和test_df
-    # from forecast_manager import get_train_test_df_by_forecast_daterange
-    #
-    # train_df, test_df = get_train_test_df_by_forecast_daterange(
-    #     data1, pre_start_date="2024-08-20", pre_end_date="2024-08-22"
-    # )
-    # # mylog.info(f'train_df:\n{train_df},{type(train_df)}')
-    # # mylog.info(f'test_df:\n{test_df},{type(test_df)}')
-    #
-    # # lstm_model = lstm_single.modeling(train_df=train_df)
-    # # # mylog.info(f'lstm_model:\n{lstm_model}')
-    # # pre_list = lstm_single.forecast(history_df=train_df, lstm_model=lstm_model, pre_steps=1)
-    # # # mylog.info(f'pre_list:\n{pre_list}')
-    #
-    # lstm_multiple = LSTMMultiple(factor_num=len(train_df.columns))
-    #
-    # lstm_multiple_model = lstm_multiple.modeling(train_df=train_df)
-    # pre_list = lstm_multiple.forecast(
-    #     history_df=train_df, lstm_model=lstm_multiple_model, pre_steps=1
-    # )
